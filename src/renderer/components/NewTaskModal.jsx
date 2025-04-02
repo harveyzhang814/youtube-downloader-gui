@@ -16,6 +16,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
   const [videoInfo, setVideoInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   // List of available subtitle languages
   const availableSubtitles = [
@@ -91,7 +92,14 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
     setSubtitles(prev => prev.filter(l => l !== langCode));
   };
 
-  const handleSubtitleInputFocus = () => {
+  const handleSubtitleInputFocus = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    const containerRect = e.target.closest('div[style*="border"]').getBoundingClientRect();
+    setDropdownPosition({
+      top: containerRect.bottom + 4,
+      left: containerRect.left,
+      width: containerRect.width
+    });
     setIsSubtitleDropdownOpen(true);
   };
 
@@ -123,7 +131,8 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         maxHeight: '90vh',
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        position: 'relative'
       }}>
         <div style={{
           padding: '16px',
@@ -431,37 +440,36 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
 
               {(isSubtitleDropdownOpen || subtitleSearch) && filteredSubtitles.length > 0 && (
                 <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  borderTop: '1px solid rgba(0,0,0,0.1)',
+                  position: 'fixed',
+                  top: `${dropdownPosition.top}px`,
+                  left: `${dropdownPosition.left}px`,
+                  width: `${dropdownPosition.width}px`,
+                  zIndex: 1100,
+                  backgroundColor: 'white',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(0,0,0,0.1)',
                   maxHeight: '200px',
                   overflowY: 'auto',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '2px',
-                  backgroundColor: 'white',
-                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                  borderRadius: '0 0 6px 6px',
-                  zIndex: 1001,
-                  width: '100%'
+                  gap: '2px'
                 }}>
                   {filteredSubtitles.map(lang => (
                     <button
                       key={lang.code}
                       type="button"
-                      onClick={() => handleSubtitleToggle(lang.code)}
+                      onClick={() => {
+                        handleSubtitleToggle(lang.code);
+                        setSubtitleSearch('');
+                      }}
                       style={{
-                        padding: '6px 8px',
+                        padding: '8px 12px',
                         textAlign: 'left',
                         border: 'none',
                         background: 'none',
                         cursor: 'pointer',
-                        fontSize: '13px',
-                        ':hover': {
-                          backgroundColor: '#f5f5f7'
-                        }
+                        fontSize: '13px'
                       }}
                       onMouseEnter={(e) => {
                         e.target.style.backgroundColor = '#f5f5f7';
@@ -473,15 +481,6 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                       {lang.name} ({lang.code.toUpperCase()})
                     </button>
                   ))}
-                  {filteredSubtitles.length === 0 && (
-                    <div style={{
-                      padding: '6px 8px',
-                      color: '#666',
-                      fontSize: '13px'
-                    }}>
-                      {subtitleSearch ? 'No matching languages found' : 'No available languages'}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
