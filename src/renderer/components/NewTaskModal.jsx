@@ -10,10 +10,34 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
   const [audioFormat, setAudioFormat] = useState('none');
   const [audioQuality, setAudioQuality] = useState('best');
   const [subtitles, setSubtitles] = useState([]);
+  const [subtitleSearch, setSubtitleSearch] = useState('');
+  const [isSubtitleDropdownOpen, setIsSubtitleDropdownOpen] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [videoInfo, setVideoInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // List of available subtitle languages
+  const availableSubtitles = [
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'it', name: 'Italian' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'ar', name: 'Arabic' },
+    { code: 'hi', name: 'Hindi' }
+  ];
+
+  const filteredSubtitles = availableSubtitles.filter(lang => 
+    (lang.code.toLowerCase().includes(subtitleSearch.toLowerCase()) ||
+     lang.name.toLowerCase().includes(subtitleSearch.toLowerCase())) &&
+    !subtitles.includes(lang.code)
+  );
 
   const handleUrlChange = (e) => {
     setUrl(e.target.value);
@@ -54,12 +78,28 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
     });
   };
 
-  const handleSubtitleToggle = (lang) => {
+  const handleSubtitleToggle = (langCode) => {
     setSubtitles(prev => 
-      prev.includes(lang) 
-        ? prev.filter(l => l !== lang)
-        : [...prev, lang]
+      prev.includes(langCode)
+        ? prev.filter(l => l !== langCode)
+        : [...prev, langCode]
     );
+    setSubtitleSearch('');
+  };
+
+  const handleRemoveSubtitle = (langCode) => {
+    setSubtitles(prev => prev.filter(l => l !== langCode));
+  };
+
+  const handleSubtitleInputFocus = () => {
+    setIsSubtitleDropdownOpen(true);
+  };
+
+  const handleSubtitleInputBlur = (e) => {
+    // Delay closing to allow click events on the dropdown items
+    setTimeout(() => {
+      setIsSubtitleDropdownOpen(false);
+    }, 200);
   };
 
   return (
@@ -80,15 +120,18 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         borderRadius: '8px',
         width: '90%',
         maxWidth: '500px',
+        maxHeight: '90vh',
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-        overflow: 'hidden'
+        display: 'flex',
+        flexDirection: 'column'
       }}>
         <div style={{
           padding: '16px',
           borderBottom: '1px solid rgba(0,0,0,0.1)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          flexShrink: 0
         }}>
           <h2 style={{ 
             margin: 0,
@@ -120,8 +163,17 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: '16px' }}>
-          <div style={{ marginBottom: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ 
+          padding: '16px',
+          overflowY: 'auto',
+          flexGrow: 1,
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          <div style={{ 
+            marginBottom: '16px',
+            width: '100%'
+          }}>
             <label style={{
               display: 'block',
               marginBottom: '8px',
@@ -141,13 +193,17 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 fontSize: '13px',
                 border: '1px solid rgba(0,0,0,0.1)',
                 borderRadius: '6px',
-                backgroundColor: 'white'
+                backgroundColor: 'white',
+                boxSizing: 'border-box'
               }}
               required
             />
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ 
+            marginBottom: '16px',
+            width: '100%'
+          }}>
             <label style={{
               display: 'block',
               marginBottom: '8px',
@@ -165,7 +221,8 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 fontSize: '13px',
                 border: '1px solid rgba(0,0,0,0.1)',
                 borderRadius: '6px',
-                backgroundColor: 'white'
+                backgroundColor: 'white',
+                boxSizing: 'border-box'
               }}
             >
               <option value="bestvideo+bestaudio/best">Best Video + Best Audio</option>
@@ -272,7 +329,10 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
             </div>
           )}
 
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ 
+            marginBottom: '16px',
+            position: 'relative'
+          }}>
             <label style={{
               display: 'block',
               marginBottom: '8px',
@@ -282,44 +342,157 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
               Subtitles
             </label>
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '8px',
-              maxHeight: '120px',
-              overflow: 'auto',
-              padding: '8px',
               border: '1px solid rgba(0,0,0,0.1)',
               borderRadius: '6px',
-              backgroundColor: 'white'
+              backgroundColor: 'white',
+              height: '38px',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              width: '100%'
             }}>
-              {['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi'].map(lang => (
-                <label key={lang} style={{
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '4px',
+                padding: '7px 8px',
+                alignItems: 'center',
+                height: '100%',
+                cursor: 'text'
+              }}
+              onClick={() => {
+                const input = document.querySelector('#subtitle-search');
+                if (input) input.focus();
+              }}>
+                {subtitles.map(langCode => {
+                  const lang = availableSubtitles.find(l => l.code === langCode);
+                  return (
+                    <div key={langCode} style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      padding: '2px 6px',
+                      backgroundColor: '#f0f0f0',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      height: '22px',
+                      color: '#666'
+                    }}>
+                      <span>{lang ? lang.name : langCode.toUpperCase()}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveSubtitle(langCode);
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          padding: '1px',
+                          cursor: 'pointer',
+                          color: '#666',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+                <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '13px',
-                  color: '#666',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: subtitles.includes(lang) ? '#f0f0f0' : 'transparent'
+                  flex: 1,
+                  minWidth: '80px',
+                  height: '22px'
                 }}>
                   <input
-                    type="checkbox"
-                    checked={subtitles.includes(lang)}
-                    onChange={() => handleSubtitleToggle(lang)}
-                    style={{ margin: 0 }}
+                    id="subtitle-search"
+                    type="text"
+                    value={subtitleSearch}
+                    onChange={(e) => setSubtitleSearch(e.target.value)}
+                    onFocus={handleSubtitleInputFocus}
+                    onBlur={handleSubtitleInputBlur}
+                    placeholder={subtitles.length > 0 ? "Add more..." : "Search languages..."}
+                    style={{
+                      width: '100%',
+                      padding: '0',
+                      fontSize: '13px',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      outline: 'none'
+                    }}
                   />
-                  <span>{lang.toUpperCase()}</span>
-                </label>
-              ))}
+                </div>
+              </div>
+
+              {(isSubtitleDropdownOpen || subtitleSearch) && filteredSubtitles.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  borderTop: '1px solid rgba(0,0,0,0.1)',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  backgroundColor: 'white',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                  borderRadius: '0 0 6px 6px',
+                  zIndex: 1001,
+                  width: '100%'
+                }}>
+                  {filteredSubtitles.map(lang => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => handleSubtitleToggle(lang.code)}
+                      style={{
+                        padding: '6px 8px',
+                        textAlign: 'left',
+                        border: 'none',
+                        background: 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        ':hover': {
+                          backgroundColor: '#f5f5f7'
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = '#f5f5f7';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = 'transparent';
+                      }}
+                    >
+                      {lang.name} ({lang.code.toUpperCase()})
+                    </button>
+                  ))}
+                  {filteredSubtitles.length === 0 && (
+                    <div style={{
+                      padding: '6px 8px',
+                      color: '#666',
+                      fontSize: '13px'
+                    }}>
+                      {subtitleSearch ? 'No matching languages found' : 'No available languages'}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           <div style={{
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: '8px'
+            gap: '8px',
+            marginTop: 'auto',
+            flexShrink: 0
           }}>
             <button
               type="button"
