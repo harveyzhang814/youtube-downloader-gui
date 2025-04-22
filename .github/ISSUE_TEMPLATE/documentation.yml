@@ -1,0 +1,62 @@
+name: Documentation Improvement
+description: Suggest improvements to our documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to help us improve our documentation!
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of documentation change
+      description: What type of documentation change are you suggesting?
+      options:
+        - New documentation
+        - Documentation update/fix
+        - Documentation removal
+        - Documentation reorganization
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation you want to improve? (URL or file path)
+      placeholder: "e.g., README.md or https://github.com/.../wiki/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current documentation
+      description: What does the current documentation say? (if applicable)
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested changes
+      description: What changes would you like to see in the documentation?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why is this change needed?
+      description: Please explain why this documentation change would be helpful.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this documentation improvement, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true 
