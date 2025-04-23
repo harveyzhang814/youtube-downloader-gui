@@ -142,7 +142,7 @@ ipcMain.handle('get-available-formats', async (event, url) => {
       if (code === 0 && stdout) {
         try {
           // Parse the format output
-          const formats = stdout.split('\n')
+          const allFormats = stdout.split('\n')
             .filter(line => {
               // Skip header lines, empty lines, and separator lines
               return line.trim() && 
@@ -179,38 +179,75 @@ ipcMain.handle('get-available-formats', async (event, url) => {
                 // Join the remaining parts as description
                 const description = remainingParts.join(' ');
 
+                // Determine if this is an audio-only format
+                const isAudioOnly = description.toLowerCase().includes('audio only') || resolution === 'audio';
+
+                // Extract VBR (Video Bitrate) if available
+                let vbr = null;
+                const vbrMatch = description.match(/(\d+)k.*?fps/i);
+                if (vbrMatch && !isAudioOnly) {
+                  vbr = `${vbrMatch[1]} kbps`;
+                }
+
+                // Extract ABR (Audio Bitrate) if available
+                let abr = null;
+                const abrMatch = description.match(/(\d+)k\s*\(audio/i) || description.match(/audio.*?(\d+)k/i);
+                if (abrMatch) {
+                  abr = `${abrMatch[1]} kbps`;
+                }
+
+                // Extract ASR (Audio Sample Rate) if available
+                let asr = null;
+                const asrMatch = description.match(/(\d+)Hz/i) || description.match(/(\d+) kHz/i);
+                if (asrMatch) {
+                  asr = asrMatch[0];
+                }
+
                 return {
                   id,
                   ext,
-                  resolution: resolution === 'audio' ? 'audio only' : resolution,
+                  resolution: isAudioOnly ? 'audio only' : resolution,
                   fps: fps || '',
                   filesize: filesize || 'N/A',
-                  description
+                  description,
+                  isAudioOnly,
+                  vbr: vbr || '',
+                  abr: abr || '',
+                  asr: asr || ''
                 };
               }
               return null;
             })
-            .filter(format => format !== null)
-            // Sort by resolution (audio last, then descending resolution)
+            .filter(format => format !== null);
+
+          // Separate formats into video and audio
+          const videoFormats = allFormats
+            .filter(format => !format.isAudioOnly)
             .sort((a, b) => {
-              if (a.resolution === 'audio only' && b.resolution === 'audio only') return 0;
-              if (a.resolution === 'audio only') return 1;
-              if (b.resolution === 'audio only') return -1;
-              
               // Extract numeric resolution for comparison
               const getNumericResolution = (res) => {
                 const match = res.match(/(\d+)x(\d+)/);
                 return match ? parseInt(match[2]) : 0;
               };
-              
               return getNumericResolution(b.resolution) - getNumericResolution(a.resolution);
             });
 
-          if (formats.length === 0) {
+          const audioFormats = allFormats
+            .filter(format => format.isAudioOnly)
+            .sort((a, b) => {
+              // Sort by bitrate if available in description
+              const getBitrate = (desc) => {
+                const match = desc.match(/(\d+)k/);
+                return match ? parseInt(match[1]) : 0;
+              };
+              return getBitrate(b.description) - getBitrate(a.description);
+            });
+
+          if (videoFormats.length === 0 && audioFormats.length === 0) {
             console.error('No formats found in output:', stdout);
-            reject(new Error('No video formats found'));
+            reject(new Error('No video or audio formats found'));
           } else {
-            resolve(formats);
+            resolve({ videoFormats, audioFormats });
           }
         } catch (error) {
           console.error('Format parsing error:', error);
@@ -278,16 +315,22 @@ ipcMain.handle('get-video-info', async (event, url) => {
 });
 
 // Handle video download
-ipcMain.handle('download-video', async (event, { url, format, subtitles }) => {
+ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, subtitles }) => {
   const downloadPath = store.get('downloadPath');
   const browserCookie = store.get('browserCookie');
 
   // Prepare command arguments
   const args = [
     '--cookies-from-browser', browserCookie,
-    '-o', `${downloadPath}/%(title)s.%(ext)s`,
-    '-f', format  // Use the selected format directly
+    '-o', `${downloadPath}/%(title)s.%(ext)s`
   ];
+
+  // Combine video and audio formats if both are selected
+  if (videoFormat && audioFormat) {
+    args.push('-f', `${videoFormat}+${audioFormat}`);
+  } else {
+    args.push('-f', videoFormat || audioFormat);
+  }
 
   if (subtitles) {
     args.push('--sub-langs', subtitles);

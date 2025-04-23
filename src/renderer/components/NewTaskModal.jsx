@@ -5,11 +5,13 @@ const ipcRenderer = window.require ? window.require('electron').ipcRenderer : nu
 
 const NewTaskModal = ({ onClose, onSubmit }) => {
   const [url, setUrl] = useState('');
-  const [selectedFormat, setSelectedFormat] = useState(null);
+  const [selectedVideoFormat, setSelectedVideoFormat] = useState(null);
+  const [selectedAudioFormat, setSelectedAudioFormat] = useState(null);
+  const [videoFormats, setVideoFormats] = useState([]);
+  const [audioFormats, setAudioFormats] = useState([]);
   const [subtitles, setSubtitles] = useState([]);
   const [subtitleSearch, setSubtitleSearch] = useState('');
   const [isSubtitleDropdownOpen, setIsSubtitleDropdownOpen] = useState(false);
-  const [availableFormats, setAvailableFormats] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -39,8 +41,10 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
   const handleUrlChange = (e) => {
     setUrl(e.target.value);
     setError(null);
-    setAvailableFormats([]);
-    setSelectedFormat(null);
+    setVideoFormats([]);
+    setAudioFormats([]);
+    setSelectedVideoFormat(null);
+    setSelectedAudioFormat(null);
   };
 
   const searchFormats = async () => {
@@ -52,7 +56,10 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
     
     setIsLoading(true);
     setError(null);
-    setAvailableFormats([]);
+    setVideoFormats([]);
+    setAudioFormats([]);
+    setSelectedVideoFormat(null);
+    setSelectedAudioFormat(null);
     
     try {
       // Validate URL format first
@@ -61,17 +68,22 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         throw new Error('Please enter a valid YouTube URL');
       }
 
-      const formats = await ipcRenderer.invoke('get-available-formats', url);
-      setAvailableFormats(formats);
-      if (formats.length > 0) {
-        // Default to the best quality format
-        setSelectedFormat(formats[0].id);
+      const { videoFormats, audioFormats } = await ipcRenderer.invoke('get-available-formats', url);
+      setVideoFormats(videoFormats);
+      setAudioFormats(audioFormats);
+      
+      // Default selections
+      if (videoFormats.length > 0) {
+        setSelectedVideoFormat(videoFormats[0].id);
+      }
+      if (audioFormats.length > 0) {
+        setSelectedAudioFormat(audioFormats[0].id);
       }
     } catch (error) {
       console.error('Error fetching formats:', error);
       setError(error.message || 'Failed to fetch video formats. Please check the URL and your internet connection.');
-      setAvailableFormats([]);
-      setSelectedFormat(null);
+      setVideoFormats([]);
+      setAudioFormats([]);
     } finally {
       setIsLoading(false);
     }
@@ -79,13 +91,14 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!selectedFormat) {
-      setError('Please select a format first');
+    if (!selectedVideoFormat && !selectedAudioFormat) {
+      setError('Please select at least one format (video or audio)');
       return;
     }
     onSubmit({ 
       url,
-      format: selectedFormat,
+      videoFormat: selectedVideoFormat,
+      audioFormat: selectedAudioFormat,
       subtitles: subtitles.length > 0 ? subtitles.join(',') : null
     });
   };
@@ -121,6 +134,238 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
       setIsSubtitleDropdownOpen(false);
     }, 200);
   };
+
+  const VideoFormatList = ({ formats, selectedFormat, onFormatSelect }) => (
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '13px',
+        color: '#666'
+      }}>
+        Video Formats
+      </label>
+      <div style={{
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '6px',
+        maxHeight: '200px',
+        overflowY: 'auto'
+      }}>
+        {formats.map((format) => (
+          <label
+            key={format.id}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              cursor: 'pointer',
+              backgroundColor: selectedFormat === format.id ? '#f0f9ff' : 'transparent',
+              borderBottom: '1px solid rgba(0,0,0,0.05)',
+              fontSize: '13px',
+              ':hover': {
+                backgroundColor: selectedFormat === format.id ? '#f0f9ff' : '#f5f5f7'
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="video-format"
+              value={format.id}
+              checked={selectedFormat === format.id}
+              onChange={() => onFormatSelect(format.id)}
+              style={{ marginRight: '12px', marginTop: '2px' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '4px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flex: 1
+                }}>
+                  <span style={{ 
+                    fontWeight: '500',
+                    minWidth: '80px'
+                  }}>
+                    {format.resolution}
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    backgroundColor: '#f0f0f0',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase'
+                  }}>
+                    {format.ext}
+                  </span>
+                  {format.fps && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666'
+                    }}>
+                      {format.fps} FPS
+                    </span>
+                  )}
+                  {format.vbr && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666',
+                      marginLeft: format.fps ? '8px' : '0'
+                    }}>
+                      {format.vbr}
+                    </span>
+                  )}
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    marginLeft: 'auto'
+                  }}>
+                    {format.filesize}
+                  </span>
+                </div>
+                <span style={{ 
+                  fontSize: '11px',
+                  color: '#666',
+                  opacity: 0.7
+                }}>
+                  ID: {format.id}
+                </span>
+              </div>
+              <div style={{ 
+                fontSize: '12px', 
+                color: '#666',
+                lineHeight: '1.4'
+              }}>
+                {/* {format.description} */}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
+  const AudioFormatList = ({ formats, selectedFormat, onFormatSelect }) => (
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '13px',
+        color: '#666'
+      }}>
+        Audio Formats
+      </label>
+      <div style={{
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '6px',
+        maxHeight: '200px',
+        overflowY: 'auto'
+      }}>
+        {formats.map((format) => (
+          <label
+            key={format.id}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              cursor: 'pointer',
+              backgroundColor: selectedFormat === format.id ? '#f0f9ff' : 'transparent',
+              borderBottom: '1px solid rgba(0,0,0,0.05)',
+              fontSize: '13px',
+              ':hover': {
+                backgroundColor: selectedFormat === format.id ? '#f0f9ff' : '#f5f5f7'
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="audio-format"
+              value={format.id}
+              checked={selectedFormat === format.id}
+              onChange={() => onFormatSelect(format.id)}
+              style={{ marginRight: '12px', marginTop: '2px' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '4px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flex: 1
+                }}>
+                  <span style={{ 
+                    fontWeight: '500',
+                    minWidth: '80px'
+                  }}>
+                    {format.resolution}
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    backgroundColor: '#f0f0f0',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase'
+                  }}>
+                    {format.ext}
+                  </span>
+                  {format.asr && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666'
+                    }}>
+                      {format.asr}
+                    </span>
+                  )}
+                  {format.abr && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666',
+                      marginLeft: format.asr ? '8px' : '0'
+                    }}>
+                      {format.abr}
+                    </span>
+                  )}
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    marginLeft: 'auto'
+                  }}>
+                    {format.filesize}
+                  </span>
+                </div>
+                <span style={{ 
+                  fontSize: '11px',
+                  color: '#666',
+                  opacity: 0.7
+                }}>
+                  ID: {format.id}
+                </span>
+              </div>
+              <div style={{ 
+                fontSize: '12px', 
+                color: '#666',
+                lineHeight: '1.4'
+              }}>
+                {format.description}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{
@@ -261,111 +506,24 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
             </div>
           )}
 
-          {availableFormats.length > 0 && (
-            <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '13px',
-                color: '#666'
-              }}>
-                Available Formats
-              </label>
-              <div style={{
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '6px',
-                maxHeight: '300px',
-                overflowY: 'auto'
-              }}>
-                {availableFormats.map((format) => (
-                  <label
-                    key={format.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      padding: '12px',
-                      cursor: 'pointer',
-                      backgroundColor: selectedFormat === format.id ? '#f0f9ff' : 'transparent',
-                      borderBottom: '1px solid rgba(0,0,0,0.05)',
-                      fontSize: '13px',
-                      ':hover': {
-                        backgroundColor: selectedFormat === format.id ? '#f0f9ff' : '#f5f5f7'
-                      }
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="format"
-                      value={format.id}
-                      checked={selectedFormat === format.id}
-                      onChange={() => setSelectedFormat(format.id)}
-                      style={{ marginRight: '12px', marginTop: '2px' }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px',
-                        marginBottom: '4px'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          flex: 1
-                        }}>
-                          <span style={{ 
-                            fontWeight: '500',
-                            minWidth: '80px'
-                          }}>
-                            {format.resolution}
-                          </span>
-                          <span style={{ 
-                            fontSize: '12px',
-                            color: '#666',
-                            backgroundColor: '#f0f0f0',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            textTransform: 'uppercase'
-                          }}>
-                            {format.ext}
-                          </span>
-                          {format.fps && (
-                            <span style={{ 
-                              fontSize: '12px',
-                              color: '#666'
-                            }}>
-                              {format.fps} FPS
-                            </span>
-                          )}
-                          <span style={{ 
-                            fontSize: '12px',
-                            color: '#666',
-                            marginLeft: 'auto'
-                          }}>
-                            {format.filesize}
-                          </span>
-                        </div>
-                        <span style={{ 
-                          fontSize: '11px',
-                          color: '#666',
-                          opacity: 0.7
-                        }}>
-                          ID: {format.id}
-                        </span>
-                      </div>
-                      <div style={{ 
-                        fontSize: '12px', 
-                        color: '#666',
-                        lineHeight: '1.4'
-                      }}>
-                        {format.description}
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
+          {(videoFormats.length > 0 || audioFormats.length > 0) && (
+            <>
+              {videoFormats.length > 0 && (
+                <VideoFormatList
+                  formats={videoFormats}
+                  selectedFormat={selectedVideoFormat}
+                  onFormatSelect={setSelectedVideoFormat}
+                />
+              )}
+              
+              {audioFormats.length > 0 && (
+                <AudioFormatList
+                  formats={audioFormats}
+                  selectedFormat={selectedAudioFormat}
+                  onFormatSelect={setSelectedAudioFormat}
+                />
+              )}
+            </>
           )}
 
           <div>
@@ -494,7 +652,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
             </button>
             <button
               type="submit"
-              disabled={!selectedFormat || isLoading}
+              disabled={!selectedVideoFormat && !selectedAudioFormat || isLoading}
               style={{
                 padding: '8px 16px',
                 fontSize: '14px',
@@ -503,8 +661,8 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 backgroundColor: '#0066cc',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: selectedFormat ? 'pointer' : 'not-allowed',
-                opacity: selectedFormat ? 1 : 0.5
+                cursor: selectedVideoFormat || selectedAudioFormat ? 'pointer' : 'not-allowed',
+                opacity: selectedVideoFormat || selectedAudioFormat ? 1 : 0.5
               }}
             >
               Start Download
