@@ -107,6 +107,125 @@ ipcMain.on('update-settings', (event, settings) => {
   event.returnValue = true;
 });
 
+// Handle getting available formats
+ipcMain.handle('get-available-formats', async (event, url) => {
+  return new Promise((resolve, reject) => {
+    const browserCookie = store.get('browserCookie');
+    console.log('Fetching formats with browser cookie:', browserCookie);
+    
+    const ytdlCommand = spawn('yt-dlp', [
+      '--cookies-from-browser', browserCookie,
+      '-F',
+      url
+    ]);
+
+    let stdout = '';
+    let stderr = '';
+
+    ytdlCommand.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    ytdlCommand.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+      console.error(`yt-dlp stderr: ${chunk}`);
+    });
+
+    ytdlCommand.on('error', (error) => {
+      console.error('Failed to start yt-dlp process:', error);
+      reject(new Error(`Failed to start yt-dlp: ${error.message}`));
+    });
+
+    ytdlCommand.on('close', (code) => {
+      console.log('yt-dlp process exited with code:', code);
+      
+      if (code === 0 && stdout) {
+        try {
+          // Parse the format output
+          const formats = stdout.split('\n')
+            .filter(line => {
+              // Skip header lines, empty lines, and separator lines
+              return line.trim() && 
+                     !line.startsWith('[') && 
+                     !line.includes('Available formats') &&
+                     !line.includes('ID') && // Skip column headers
+                     !line.includes('─');
+            })
+            .map(line => {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 4) {
+                const id = parts[0];
+                const ext = parts[1];
+                const resolution = parts[2];
+                
+                // Extract FPS if available (it's usually after resolution)
+                let fps = null;
+                let filesize = null;
+                let remainingParts = parts.slice(3);
+                
+                // Look for FPS value
+                const fpsIndex = remainingParts.findIndex(part => !isNaN(part) && part.length <= 3);
+                if (fpsIndex !== -1) {
+                  fps = parseInt(remainingParts[fpsIndex]);
+                }
+
+                // Look for filesize (usually contains KiB, MiB, or GiB)
+                const filesizeIndex = remainingParts.findIndex(part => 
+                  part.includes('KiB') || part.includes('MiB') || part.includes('GiB'));
+                if (filesizeIndex !== -1) {
+                  filesize = remainingParts[filesizeIndex];
+                }
+
+                // Join the remaining parts as description
+                const description = remainingParts.join(' ');
+
+                return {
+                  id,
+                  ext,
+                  resolution: resolution === 'audio' ? 'audio only' : resolution,
+                  fps: fps || '',
+                  filesize: filesize || 'N/A',
+                  description
+                };
+              }
+              return null;
+            })
+            .filter(format => format !== null)
+            // Sort by resolution (audio last, then descending resolution)
+            .sort((a, b) => {
+              if (a.resolution === 'audio only' && b.resolution === 'audio only') return 0;
+              if (a.resolution === 'audio only') return 1;
+              if (b.resolution === 'audio only') return -1;
+              
+              // Extract numeric resolution for comparison
+              const getNumericResolution = (res) => {
+                const match = res.match(/(\d+)x(\d+)/);
+                return match ? parseInt(match[2]) : 0;
+              };
+              
+              return getNumericResolution(b.resolution) - getNumericResolution(a.resolution);
+            });
+
+          if (formats.length === 0) {
+            console.error('No formats found in output:', stdout);
+            reject(new Error('No video formats found'));
+          } else {
+            resolve(formats);
+          }
+        } catch (error) {
+          console.error('Format parsing error:', error);
+          console.error('Raw output:', stdout);
+          reject(new Error(`Failed to parse format information: ${error.message}`));
+        }
+      } else {
+        const errorMessage = stderr || 'Unknown error occurred';
+        console.error('yt-dlp failed:', errorMessage);
+        reject(new Error(`Failed to get format information: ${errorMessage}`));
+      }
+    });
+  });
+});
+
 ipcMain.handle('select-download-path', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory']
@@ -167,11 +286,8 @@ ipcMain.handle('download-video', async (event, { url, format, subtitles }) => {
   const args = [
     '--cookies-from-browser', browserCookie,
     '-o', `${downloadPath}/%(title)s.%(ext)s`,
+    '-f', format  // Use the selected format directly
   ];
-
-  if (format) {
-    args.push('-f', format);
-  }
 
   if (subtitles) {
     args.push('--sub-langs', subtitles);
