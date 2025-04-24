@@ -148,7 +148,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
       <div style={{
         border: '1px solid rgba(0,0,0,0.1)',
         borderRadius: '6px',
-        maxHeight: '200px',
+        maxHeight: '150px',
         overflowY: 'auto'
       }}>
         {formats.map((format) => (
@@ -264,7 +264,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
       <div style={{
         border: '1px solid rgba(0,0,0,0.1)',
         borderRadius: '6px',
-        maxHeight: '200px',
+        maxHeight: '150px',
         overflowY: 'auto'
       }}>
         {formats.map((format) => (
@@ -308,7 +308,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                     fontWeight: '500',
                     minWidth: '80px'
                   }}>
-                    {format.resolution}
+                    {format.abr}
                   </span>
                   <span style={{ 
                     fontSize: '12px',
@@ -323,18 +323,10 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                   {format.asr && (
                     <span style={{ 
                       fontSize: '12px',
-                      color: '#666'
-                    }}>
-                      {format.asr}
-                    </span>
-                  )}
-                  {format.abr && (
-                    <span style={{ 
-                      fontSize: '12px',
                       color: '#666',
                       marginLeft: format.asr ? '8px' : '0'
                     }}>
-                      {format.abr}
+                      {format.asr}
                     </span>
                   )}
                   <span style={{ 
@@ -358,7 +350,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 color: '#666',
                 lineHeight: '1.4'
               }}>
-                {format.description}
+                {/* {format.description} */}
               </div>
             </div>
           </label>
