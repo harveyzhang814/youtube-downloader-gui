@@ -5,15 +5,13 @@ const ipcRenderer = window.require ? window.require('electron').ipcRenderer : nu
 
 const NewTaskModal = ({ onClose, onSubmit }) => {
   const [url, setUrl] = useState('');
-  const [format, setFormat] = useState('bestvideo+bestaudio/best');
-  const [quality, setQuality] = useState('best');
-  const [audioFormat, setAudioFormat] = useState('none');
-  const [audioQuality, setAudioQuality] = useState('best');
+  const [selectedVideoFormat, setSelectedVideoFormat] = useState(null);
+  const [selectedAudioFormat, setSelectedAudioFormat] = useState(null);
+  const [videoFormats, setVideoFormats] = useState([]);
+  const [audioFormats, setAudioFormats] = useState([]);
   const [subtitles, setSubtitles] = useState([]);
   const [subtitleSearch, setSubtitleSearch] = useState('');
   const [isSubtitleDropdownOpen, setIsSubtitleDropdownOpen] = useState(false);
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const [videoInfo, setVideoInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -42,11 +40,14 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
 
   const handleUrlChange = (e) => {
     setUrl(e.target.value);
-    setVideoInfo(null);
     setError(null);
+    setVideoFormats([]);
+    setAudioFormats([]);
+    setSelectedVideoFormat(null);
+    setSelectedAudioFormat(null);
   };
 
-  const fetchVideoInfo = async () => {
+  const searchFormats = async () => {
     if (!url.trim()) return;
     if (!ipcRenderer) {
       setError('Electron IPC not available');
@@ -55,13 +56,34 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
     
     setIsLoading(true);
     setError(null);
+    setVideoFormats([]);
+    setAudioFormats([]);
+    setSelectedVideoFormat(null);
+    setSelectedAudioFormat(null);
     
     try {
-      const info = await ipcRenderer.invoke('get-video-info', url);
-      setVideoInfo(info);
+      // Validate URL format first
+      if (!url.match(/^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/) &&
+          !url.match(/^https?:\/\/youtu\.be\/[\w-]+/)) {
+        throw new Error('Please enter a valid YouTube URL');
+      }
+
+      const { videoFormats, audioFormats } = await ipcRenderer.invoke('get-available-formats', url);
+      setVideoFormats(videoFormats);
+      setAudioFormats(audioFormats);
+      
+      // Default selections
+      if (videoFormats.length > 0) {
+        setSelectedVideoFormat(videoFormats[0].id);
+      }
+      if (audioFormats.length > 0) {
+        setSelectedAudioFormat(audioFormats[0].id);
+      }
     } catch (error) {
-      setError('Failed to fetch video information. Please check the URL and your internet connection.');
-      console.error('Error fetching video info:', error);
+      console.error('Error fetching formats:', error);
+      setError(error.message || 'Failed to fetch video formats. Please check the URL and your internet connection.');
+      setVideoFormats([]);
+      setAudioFormats([]);
     } finally {
       setIsLoading(false);
     }
@@ -69,12 +91,14 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!selectedVideoFormat && !selectedAudioFormat) {
+      setError('Please select at least one format (video or audio)');
+      return;
+    }
     onSubmit({ 
-      url, 
-      format, 
-      quality,
-      audioFormat,
-      audioQuality,
+      url,
+      videoFormat: selectedVideoFormat,
+      audioFormat: selectedAudioFormat,
       subtitles: subtitles.length > 0 ? subtitles.join(',') : null
     });
   };
@@ -93,22 +117,247 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
   };
 
   const handleSubtitleInputFocus = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    const containerRect = e.target.closest('div[style*="border"]').getBoundingClientRect();
-    setDropdownPosition({
-      top: containerRect.bottom + 4,
-      left: containerRect.left,
-      width: containerRect.width
-    });
-    setIsSubtitleDropdownOpen(true);
+    const inputContainer = e.target.closest('div[style*="border"]');
+    if (inputContainer) {
+      const rect = inputContainer.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+      setIsSubtitleDropdownOpen(true);
+    }
   };
 
   const handleSubtitleInputBlur = (e) => {
-    // Delay closing to allow click events on the dropdown items
     setTimeout(() => {
       setIsSubtitleDropdownOpen(false);
     }, 200);
   };
+
+  const VideoFormatList = ({ formats, selectedFormat, onFormatSelect }) => (
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '13px',
+        color: '#666'
+      }}>
+        Video Formats
+      </label>
+      <div style={{
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '6px',
+        maxHeight: '150px',
+        overflowY: 'auto'
+      }}>
+        {formats.map((format) => (
+          <label
+            key={format.id}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              cursor: 'pointer',
+              backgroundColor: selectedFormat === format.id ? '#f0f9ff' : 'transparent',
+              borderBottom: '1px solid rgba(0,0,0,0.05)',
+              fontSize: '13px',
+              ':hover': {
+                backgroundColor: selectedFormat === format.id ? '#f0f9ff' : '#f5f5f7'
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="video-format"
+              value={format.id}
+              checked={selectedFormat === format.id}
+              onChange={() => onFormatSelect(format.id)}
+              style={{ marginRight: '12px', marginTop: '2px' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '4px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flex: 1
+                }}>
+                  <span style={{ 
+                    fontWeight: '500',
+                    minWidth: '80px'
+                  }}>
+                    {format.resolution}
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    backgroundColor: '#f0f0f0',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase'
+                  }}>
+                    {format.ext}
+                  </span>
+                  {format.fps && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666'
+                    }}>
+                      {format.fps} FPS
+                    </span>
+                  )}
+                  {format.vbr && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666',
+                      marginLeft: format.fps ? '8px' : '0'
+                    }}>
+                      {format.vbr}
+                    </span>
+                  )}
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    marginLeft: 'auto'
+                  }}>
+                    {format.filesize}
+                  </span>
+                </div>
+                <span style={{ 
+                  fontSize: '11px',
+                  color: '#666',
+                  opacity: 0.7
+                }}>
+                  ID: {format.id}
+                </span>
+              </div>
+              <div style={{ 
+                fontSize: '12px', 
+                color: '#666',
+                lineHeight: '1.4'
+              }}>
+                {/* {format.description} */}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
+  const AudioFormatList = ({ formats, selectedFormat, onFormatSelect }) => (
+    <div>
+      <label style={{
+        display: 'block',
+        marginBottom: '8px',
+        fontSize: '13px',
+        color: '#666'
+      }}>
+        Audio Formats
+      </label>
+      <div style={{
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '6px',
+        maxHeight: '150px',
+        overflowY: 'auto'
+      }}>
+        {formats.map((format) => (
+          <label
+            key={format.id}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              cursor: 'pointer',
+              backgroundColor: selectedFormat === format.id ? '#f0f9ff' : 'transparent',
+              borderBottom: '1px solid rgba(0,0,0,0.05)',
+              fontSize: '13px',
+              ':hover': {
+                backgroundColor: selectedFormat === format.id ? '#f0f9ff' : '#f5f5f7'
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="audio-format"
+              value={format.id}
+              checked={selectedFormat === format.id}
+              onChange={() => onFormatSelect(format.id)}
+              style={{ marginRight: '12px', marginTop: '2px' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                marginBottom: '4px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flex: 1
+                }}>
+                  <span style={{ 
+                    fontWeight: '500',
+                    minWidth: '80px'
+                  }}>
+                    {format.abr}
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    backgroundColor: '#f0f0f0',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    textTransform: 'uppercase'
+                  }}>
+                    {format.ext}
+                  </span>
+                  {format.asr && (
+                    <span style={{ 
+                      fontSize: '12px',
+                      color: '#666',
+                      marginLeft: format.asr ? '8px' : '0'
+                    }}>
+                      {format.asr}
+                    </span>
+                  )}
+                  <span style={{ 
+                    fontSize: '12px',
+                    color: '#666',
+                    marginLeft: 'auto'
+                  }}>
+                    {format.filesize}
+                  </span>
+                </div>
+                <span style={{ 
+                  fontSize: '11px',
+                  color: '#666',
+                  opacity: 0.7
+                }}>
+                  ID: {format.id}
+                </span>
+              </div>
+              <div style={{ 
+                fontSize: '12px', 
+                color: '#666',
+                lineHeight: '1.4'
+              }}>
+                {/* {format.description} */}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{
@@ -139,8 +388,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
           borderBottom: '1px solid rgba(0,0,0,0.1)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          flexShrink: 0
+          justifyContent: 'space-between'
         }}>
           <h2 style={{ 
             margin: 0,
@@ -155,15 +403,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
               border: 'none',
               padding: '4px',
               cursor: 'pointer',
-              color: '#666',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: '4px',
-              transition: 'background-color 0.2s',
-              ':hover': {
-                backgroundColor: 'rgba(0,0,0,0.05)'
-              }
+              color: '#666'
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -175,14 +415,11 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         <form onSubmit={handleSubmit} style={{ 
           padding: '16px',
           overflowY: 'auto',
-          flexGrow: 1,
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          gap: '16px'
         }}>
-          <div style={{ 
-            marginBottom: '16px',
-            width: '100%'
-          }}>
+          <div>
             <label style={{
               display: 'block',
               marginBottom: '8px',
@@ -191,307 +428,204 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
             }}>
               YouTube URL
             </label>
-            <input
-              type="text"
-              value={url}
-              onChange={handleUrlChange}
-              placeholder="https://www.youtube.com/watch?v=..."
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                fontSize: '13px',
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '6px',
-                backgroundColor: 'white',
-                boxSizing: 'border-box'
-              }}
-              required
-            />
-          </div>
-
-          <div style={{ 
-            marginBottom: '16px',
-            width: '100%'
-          }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '13px',
-              color: '#666'
+            <div style={{
+              display: 'flex',
+              gap: '8px'
             }}>
-              Video Format
-            </label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                fontSize: '13px',
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '6px',
-                backgroundColor: 'white',
-                boxSizing: 'border-box'
-              }}
-            >
-              <option value="bestvideo+bestaudio/best">Best Video + Best Audio</option>
-              <option value="bestvideo+bestaudio">Best Video + Best Audio (Separate)</option>
-              <option value="best">Best Quality</option>
-              <option value="mp4">MP4</option>
-              <option value="webm">WebM</option>
-              <option value="mkv">MKV</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '13px',
-              color: '#666'
-            }}>
-              Video Quality
-            </label>
-            <select
-              value={quality}
-              onChange={(e) => setQuality(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                fontSize: '13px',
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '6px',
-                backgroundColor: 'white'
-              }}
-            >
-              <option value="best">Best Available</option>
-              <option value="2160p">4K (2160p)</option>
-              <option value="1440p">2K (1440p)</option>
-              <option value="1080p">1080p</option>
-              <option value="720p">720p</option>
-              <option value="480p">480p</option>
-              <option value="360p">360p</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontSize: '13px',
-              color: '#666'
-            }}>
-              Audio Format
-            </label>
-            <select
-              value={audioFormat}
-              onChange={(e) => setAudioFormat(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                fontSize: '13px',
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '6px',
-                backgroundColor: 'white'
-              }}
-            >
-              <option value="none">No Audio</option>
-              <option value="mp3">MP3</option>
-              <option value="m4a">M4A</option>
-              <option value="aac">AAC</option>
-              <option value="wav">WAV</option>
-            </select>
-          </div>
-
-          {audioFormat !== 'none' && (
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '13px',
-                color: '#666'
-              }}>
-                Audio Quality
-              </label>
-              <select
-                value={audioQuality}
-                onChange={(e) => setAudioQuality(e.target.value)}
+              <input
+                type="text"
+                value={url}
+                onChange={handleUrlChange}
+                placeholder="https://www.youtube.com/watch?v=..."
                 style={{
-                  width: '100%',
+                  flex: 1,
                   padding: '8px 12px',
                   fontSize: '13px',
                   border: '1px solid rgba(0,0,0,0.1)',
                   borderRadius: '6px',
                   backgroundColor: 'white'
                 }}
+              />
+              <button
+                type="button"
+                onClick={searchFormats}
+                disabled={isLoading || !url.trim()}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  color: 'white',
+                  backgroundColor: '#0066cc',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: url.trim() ? 'pointer' : 'not-allowed',
+                  opacity: url.trim() ? 1 : 0.5
+                }}
               >
-                <option value="best">Best Available</option>
-                <option value="320k">320 kbps</option>
-                <option value="256k">256 kbps</option>
-                <option value="192k">192 kbps</option>
-                <option value="128k">128 kbps</option>
-                <option value="96k">96 kbps</option>
-                <option value="64k">64 kbps</option>
-                <option value="48k">48 kbps</option>
-                <option value="32k">32 kbps</option>
-              </select>
+                {isLoading ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fee2e2',
+              border: '1px solid #ef4444',
+              borderRadius: '6px',
+              color: '#dc2626',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px'
+            }}>
+              <svg 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                style={{ marginTop: '2px', flexShrink: 0 }}
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12" y2="16" />
+              </svg>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: '500', marginBottom: '4px' }}>Error</div>
+                <div>{error}</div>
+              </div>
             </div>
           )}
 
-          <div style={{ 
-            marginBottom: '16px',
-            position: 'relative'
-          }}>
+          {(videoFormats.length > 0 || audioFormats.length > 0) && (
+            <>
+              {videoFormats.length > 0 && (
+                <VideoFormatList
+                  formats={videoFormats}
+                  selectedFormat={selectedVideoFormat}
+                  onFormatSelect={setSelectedVideoFormat}
+                />
+              )}
+              
+              {audioFormats.length > 0 && (
+                <AudioFormatList
+                  formats={audioFormats}
+                  selectedFormat={selectedAudioFormat}
+                  onFormatSelect={setSelectedAudioFormat}
+                />
+              )}
+            </>
+          )}
+
+          <div>
             <label style={{
               display: 'block',
               marginBottom: '8px',
               fontSize: '13px',
               color: '#666'
             }}>
-              Subtitles
+              Subtitles (Optional)
             </label>
             <div style={{
               border: '1px solid rgba(0,0,0,0.1)',
               borderRadius: '6px',
               backgroundColor: 'white',
-              height: '38px',
+              minHeight: '38px',
               display: 'flex',
-              flexDirection: 'column',
-              position: 'relative',
-              width: '100%'
+              flexWrap: 'wrap',
+              gap: '4px',
+              padding: '4px 8px'
             }}>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '4px',
-                padding: '7px 8px',
-                alignItems: 'center',
-                height: '100%',
-                cursor: 'text'
-              }}
-              onClick={() => {
-                const input = document.querySelector('#subtitle-search');
-                if (input) input.focus();
-              }}>
-                {subtitles.map(langCode => {
-                  const lang = availableSubtitles.find(l => l.code === langCode);
-                  return (
-                    <div key={langCode} style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '2px',
-                      padding: '2px 6px',
-                      backgroundColor: '#f0f0f0',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      height: '22px',
-                      color: '#666'
-                    }}>
-                      <span>{lang ? lang.name : langCode.toUpperCase()}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveSubtitle(langCode);
-                        }}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          padding: '1px',
-                          cursor: 'pointer',
-                          color: '#666',
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flex: 1,
-                  minWidth: '80px',
-                  height: '22px'
-                }}>
-                  <input
-                    id="subtitle-search"
-                    type="text"
-                    value={subtitleSearch}
-                    onChange={(e) => setSubtitleSearch(e.target.value)}
-                    onFocus={handleSubtitleInputFocus}
-                    onBlur={handleSubtitleInputBlur}
-                    placeholder={subtitles.length > 0 ? "Add more..." : "Search languages..."}
-                    style={{
-                      width: '100%',
-                      padding: '0',
-                      fontSize: '13px',
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {(isSubtitleDropdownOpen || subtitleSearch) && filteredSubtitles.length > 0 && (
-                <div style={{
-                  position: 'fixed',
-                  top: `${dropdownPosition.top}px`,
-                  left: `${dropdownPosition.left}px`,
-                  width: `${dropdownPosition.width}px`,
-                  zIndex: 1100,
-                  backgroundColor: 'white',
-                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(0,0,0,0.1)',
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px'
-                }}>
-                  {filteredSubtitles.map(lang => (
+              {subtitles.map(langCode => {
+                const lang = availableSubtitles.find(l => l.code === langCode);
+                return (
+                  <div key={langCode} style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 6px',
+                    backgroundColor: '#f0f0f0',
+                    borderRadius: '4px',
+                    fontSize: '12px'
+                  }}>
+                    <span>{lang ? lang.name : langCode}</span>
                     <button
-                      key={lang.code}
                       type="button"
-                      onClick={() => {
-                        handleSubtitleToggle(lang.code);
-                        setSubtitleSearch('');
-                      }}
+                      onClick={() => handleRemoveSubtitle(langCode)}
                       style={{
-                        padding: '8px 12px',
-                        textAlign: 'left',
                         border: 'none',
                         background: 'none',
+                        padding: '2px',
                         cursor: 'pointer',
-                        fontSize: '13px'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = '#f5f5f7';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = 'transparent';
+                        color: '#666'
                       }}
                     >
-                      {lang.name} ({lang.code.toUpperCase()})
+                      ×
                     </button>
-                  ))}
-                </div>
-              )}
+                  </div>
+                );
+              })}
+              <input
+                type="text"
+                value={subtitleSearch}
+                onChange={(e) => setSubtitleSearch(e.target.value)}
+                onFocus={handleSubtitleInputFocus}
+                onBlur={handleSubtitleInputBlur}
+                placeholder={subtitles.length > 0 ? "Add more..." : "Search languages..."}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  padding: '4px',
+                  flex: 1,
+                  minWidth: '100px',
+                  fontSize: '13px'
+                }}
+              />
             </div>
           </div>
+
+          {isSubtitleDropdownOpen && filteredSubtitles.length > 0 && (
+            <div style={{
+              position: 'fixed',
+              top: `${dropdownPosition.top}px`,
+              left: `${dropdownPosition.left}px`,
+              width: `${dropdownPosition.width}px`,
+              maxHeight: '200px',
+              overflowY: 'auto',
+              backgroundColor: 'white',
+              border: '1px solid rgba(0,0,0,0.1)',
+              borderRadius: '6px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              zIndex: 1000
+            }}>
+              {filteredSubtitles.map(lang => (
+                <div
+                  key={lang.code}
+                  onClick={() => handleSubtitleToggle(lang.code)}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    backgroundColor: 'white',
+                    ':hover': {
+                      backgroundColor: '#f5f5f7'
+                    }
+                  }}
+                >
+                  {lang.name} ({lang.code})
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={{
             display: 'flex',
             justifyContent: 'flex-end',
             gap: '8px',
             marginTop: 'auto',
-            flexShrink: 0
+            paddingTop: '16px',
+            borderTop: '1px solid rgba(0,0,0,0.1)'
           }}>
             <button
               type="button"
@@ -503,17 +637,14 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 backgroundColor: '#f5f5f7',
                 border: '1px solid rgba(0,0,0,0.1)',
                 borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                ':hover': {
-                  backgroundColor: '#e5e5e7'
-                }
+                cursor: 'pointer'
               }}
             >
               Cancel
             </button>
             <button
               type="submit"
+              disabled={!selectedVideoFormat && !selectedAudioFormat || isLoading}
               style={{
                 padding: '8px 16px',
                 fontSize: '14px',
@@ -522,11 +653,8 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 backgroundColor: '#0066cc',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                ':hover': {
-                  backgroundColor: '#0055aa'
-                }
+                cursor: selectedVideoFormat || selectedAudioFormat ? 'pointer' : 'not-allowed',
+                opacity: selectedVideoFormat || selectedAudioFormat ? 1 : 0.5
               }}
             >
               Start Download
