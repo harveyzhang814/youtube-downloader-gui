@@ -4,6 +4,20 @@ A macOS-styled desktop application that provides a user-friendly graphical inter
 
 ![YouTube Downloader GUI](https://via.placeholder.com/800x500.png?text=YouTube+Downloader+GUI)
 
+## Quick Installation
+
+You can install the application directly from GitHub using the following command:
+
+```bash
+curl -o- https://raw.githubusercontent.com/harveyzhang814/youtube-downloader-gui/main/install.sh | bash
+```
+
+After installation, you can run the application from any terminal:
+
+```bash
+youtube-downloader-gui
+```
+
 ## Features
 
 - **User-friendly Interface**: Clean, macOS-styled design across all platforms
@@ -17,16 +31,23 @@ A macOS-styled desktop application that provides a user-friendly graphical inter
 
 This application requires the following dependencies to be installed on your system:
 
+- **Python 3.x**: Required for yt-dlp
 - **yt-dlp**: The command-line YouTube downloader
 - **ffmpeg**: Required for media processing
 
-### Installation Instructions
+### Installing Dependencies
+
+#### Python 3.x
+
+- **macOS**: `brew install python3`
+- **Windows**: Download from [python.org](https://www.python.org/downloads/)
+- **Linux**: Usually pre-installed, or `sudo apt install python3`
 
 #### yt-dlp
 
 - **macOS (Homebrew)**: `brew install yt-dlp`
-- **Windows**: [Download from GitHub](https://github.com/yt-dlp/yt-dlp#installation)
-- **Linux**: `sudo apt install yt-dlp` or `sudo pip install yt-dlp`
+- **Windows**: `pip3 install yt-dlp`
+- **Linux**: `pip3 install yt-dlp`
 
 #### ffmpeg
 
@@ -34,18 +55,12 @@ This application requires the following dependencies to be installed on your sys
 - **Windows**: [Download from ffmpeg.org](https://ffmpeg.org/download.html)
 - **Linux**: `sudo apt install ffmpeg`
 
-## Installation
-
-1. Download the latest release for your platform from the [Releases](https://github.com/harveyzhang814/youtube-downloader-gui/releases) page.
-2. Install the application using the installer for your platform.
-3. Launch the application.
-
 ## Development
 
-### Prerequisites
+If you want to contribute to the development, you'll need:
 
-- Node.js (v14+)
-- npm or yarn
+- Node.js 18.x or later
+- npm 8.x or later
 
 ### Getting Started
 
@@ -65,15 +80,11 @@ This application requires the following dependencies to be installed on your sys
    npm run dev
    ```
 
-### Building
-
-To build the application for your platform:
-
-```bash
-npm run package
-```
-
-The packaged application will be available in the `release` directory.
+4. Build standalone executables:
+   ```bash
+   npm run build
+   npm run build:bin
+   ```
 
 ## License
 

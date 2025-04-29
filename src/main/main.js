@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
