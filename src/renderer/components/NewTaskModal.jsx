@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
 
-// Fix the electron import
-const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
-
 const NewTaskModal = ({ onClose, onSubmit }) => {
   const [url, setUrl] = useState('');
   const [selectedVideoFormat, setSelectedVideoFormat] = useState(null);
@@ -49,10 +46,6 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
 
   const searchFormats = async () => {
     if (!url.trim()) return;
-    if (!ipcRenderer) {
-      setError('Electron IPC not available');
-      return;
-    }
     
     setIsLoading(true);
     setError(null);
@@ -68,7 +61,12 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         throw new Error('Please enter a valid YouTube URL');
       }
 
-      const { videoFormats, audioFormats } = await ipcRenderer.invoke('get-available-formats', url);
+      const response = await fetch(`/api/formats?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch video formats');
+      }
+
+      const { videoFormats, audioFormats } = await response.json();
       setVideoFormats(videoFormats);
       setAudioFormats(audioFormats);
       

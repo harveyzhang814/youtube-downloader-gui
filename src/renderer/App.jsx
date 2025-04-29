@@ -7,87 +7,91 @@ import NewTaskModal from './components/NewTaskModal';
 import Settings from './components/Settings';
 import DependencyCheck from './components/DependencyCheck';
 
-// Fix the electron import
-const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
-
 const App = () => {
   const [downloads, setDownloads] = useState([]);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [dependencies, setDependencies] = useState({ ytdlp: true, ffmpeg: true });
+  const [dependencies, setDependencies] = useState({ ytdlp: false, ffmpeg: false });
   const [dependencyCheckShown, setDependencyCheckShown] = useState(false);
+  const [dependencyError, setDependencyError] = useState(null);
 
   useEffect(() => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
-      return;
-    }
-
-    // Listen for dependency check results
-    ipcRenderer.on('dependencies-check', (_, deps) => {
-      setDependencies(deps);
-      if (!deps.ytdlp || !deps.ffmpeg) {
+    // 检查依赖
+    const checkDependencies = async () => {
+      try {
+        console.log('Checking dependencies...');
+        const response = await fetch('/api/check-dependencies');
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.details || 'Failed to check dependencies');
+        }
+        const deps = await response.json();
+        console.log('Dependencies check result:', deps);
+        setDependencies(deps);
+        if (!deps.ytdlp || !deps.ffmpeg) {
+          setDependencyCheckShown(true);
+        }
+      } catch (error) {
+        console.error('Dependencies check failed:', error);
+        setDependencyError(error.message);
         setDependencyCheckShown(true);
       }
-    });
-
-    // Listen for download updates
-    ipcRenderer.on('download-started', (_, downloadInfo) => {
-      setDownloads(prev => [...prev, downloadInfo]);
-    });
-
-    ipcRenderer.on('download-progress', (_, downloadInfo) => {
-      setDownloads(prev => 
-        prev.map(download => 
-          download.id === downloadInfo.id ? downloadInfo : download
-        )
-      );
-    });
-
-    ipcRenderer.on('download-finished', (_, downloadInfo) => {
-      setDownloads(prev => 
-        prev.map(download => 
-          download.id === downloadInfo.id ? downloadInfo : download
-        )
-      );
-    });
-
-    // Cleanup listeners on unmount
-    return () => {
-      if (ipcRenderer) {
-        ipcRenderer.removeAllListeners('dependencies-check');
-        ipcRenderer.removeAllListeners('download-started');
-        ipcRenderer.removeAllListeners('download-progress');
-        ipcRenderer.removeAllListeners('download-finished');
-      }
     };
+
+    checkDependencies();
+
+    // 轮询下载状态
+    const pollInterval = setInterval(() => {
+      fetch('/api/downloads')
+        .then(res => res.json())
+        .then(setDownloads)
+        .catch(console.error);
+    }, 1000);
+
+    return () => clearInterval(pollInterval);
   }, []);
 
   const handleStartDownload = async (downloadData) => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
-      return;
-    }
-    
     try {
-      await ipcRenderer.invoke('download-video', downloadData);
+      const response = await fetch('/api/download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(downloadData),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Download failed');
+      }
+      
+      const result = await response.json();
+      console.log('Download started:', result);
+      
+      // 添加新的下载到列表中
+      setDownloads(prev => [...prev, result]);
       setIsNewTaskModalOpen(false);
     } catch (error) {
       console.error('Download failed:', error);
+      alert(`Download failed: ${error.message}`);
     }
   };
 
-  const handleDeleteDownload = (downloadId) => {
-    setDownloads(prev => prev.filter(download => download.id !== downloadId));
+  const handleDeleteDownload = async (downloadId) => {
+    try {
+      await fetch(`/api/downloads/${downloadId}`, {
+        method: 'DELETE',
+      });
+      setDownloads(prev => prev.filter(download => download.id !== downloadId));
+    } catch (error) {
+      console.error('Failed to delete download:', error);
+    }
   };
 
   const handleOpenFileLocation = async (filePath) => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
-      return;
-    }
-    
-    await ipcRenderer.invoke('open-file-location', filePath);
+    // 在浏览器环境中，我们无法直接打开文件位置
+    alert('File location cannot be opened in browser. Please check your downloads folder.');
   };
 
   const closeDependencyCheck = () => {

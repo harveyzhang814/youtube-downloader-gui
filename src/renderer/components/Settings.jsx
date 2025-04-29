@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Fix the electron import
-const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
-
 const Settings = ({ onClose }) => {
   const [settings, setSettings] = useState({
     downloadPath: '',
@@ -10,29 +7,28 @@ const Settings = ({ onClose }) => {
   });
 
   useEffect(() => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
-      return;
-    }
-    
-    // Load settings from main process
-    try {
-      const savedSettings = ipcRenderer.sendSync('get-settings');
-      setSettings(savedSettings);
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
+    // 加载设置
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(setSettings)
+      .catch(error => {
+        console.error('Error loading settings:', error);
+      });
   }, []);
 
   const handleDownloadPathSelect = async () => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
-      return;
-    }
-    
-    const path = await ipcRenderer.invoke('select-download-path');
-    if (path) {
-      setSettings(prev => ({ ...prev, downloadPath: path }));
+    try {
+      const response = await fetch('/api/select-directory');
+      if (!response.ok) {
+        throw new Error('Failed to select directory');
+      }
+      const { path } = await response.json();
+      if (path) {
+        setSettings(prev => ({ ...prev, downloadPath: path }));
+      }
+    } catch (error) {
+      console.error('Error selecting directory:', error);
+      alert('Failed to select download directory');
     }
   };
 
@@ -40,15 +36,25 @@ const Settings = ({ onClose }) => {
     setSettings(prev => ({ ...prev, browserCookie: e.target.value }));
   };
 
-  const handleSave = () => {
-    if (!ipcRenderer) {
-      console.error('Electron IPC not available');
+  const handleSave = async () => {
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
+      
       onClose();
-      return;
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      alert('Failed to save settings');
     }
-    
-    ipcRenderer.sendSync('update-settings', settings);
-    onClose();
   };
 
   return (
@@ -156,16 +162,18 @@ const Settings = ({ onClose }) => {
             </div>
           </div>
 
-          <div style={{ marginBottom: '16px' }}>
+          <div>
             <label style={{
               display: 'block',
               marginBottom: '8px',
               fontSize: '13px',
               color: '#666'
             }}>
-              Cookie Source
+              Browser Cookie Source
             </label>
-            <select 
+            <select
+              value={settings.browserCookie}
+              onChange={handleBrowserCookieChange}
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -174,24 +182,12 @@ const Settings = ({ onClose }) => {
                 borderRadius: '6px',
                 backgroundColor: 'white'
               }}
-              value={settings.browserCookie}
-              onChange={handleBrowserCookieChange}
             >
               <option value="chrome">Chrome</option>
               <option value="firefox">Firefox</option>
               <option value="safari">Safari</option>
               <option value="edge">Edge</option>
-              <option value="opera">Opera</option>
-              <option value="brave">Brave</option>
-              <option value="none">None</option>
             </select>
-            <p style={{
-              margin: '4px 0 0 0',
-              fontSize: '12px',
-              color: '#666'
-            }}>
-              Select browser to extract cookies from (helps bypass restrictions)
-            </p>
           </div>
         </div>
       </div>
@@ -199,27 +195,37 @@ const Settings = ({ onClose }) => {
       <div style={{
         padding: '16px',
         borderTop: '1px solid rgba(0,0,0,0.1)',
-        backgroundColor: '#f5f5f7'
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '8px'
       }}>
-        <button 
+        <button
+          onClick={onClose}
           style={{
-            width: '100%',
             padding: '8px 16px',
-            fontSize: '14px',
-            fontWeight: '500',
+            fontSize: '13px',
+            color: '#666',
+            backgroundColor: '#f5f5f7',
+            border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          style={{
+            padding: '8px 16px',
+            fontSize: '13px',
             color: 'white',
             backgroundColor: '#0066cc',
             border: 'none',
             borderRadius: '6px',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s',
-            ':hover': {
-              backgroundColor: '#0055aa'
-            }
+            cursor: 'pointer'
           }}
-          onClick={handleSave}
         >
-          Save Changes
+          Save
         </button>
       </div>
     </div>

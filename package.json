@@ -1,16 +1,16 @@
 {
   "name": "youtube-downloader-gui",
   "version": "1.0.0",
-  "description": "A macOS-styled GUI for downloading YouTube videos using yt-dlp",
-  "main": "src/main/main.js",
+  "description": "A browser-based GUI for downloading YouTube videos using yt-dlp",
+  "type": "module",
+  "main": "src/main/server.js",
   "bin": {
-    "youtube-downloader-gui": "./src/main/main.js"
+    "youtube-downloader-gui": "./src/main/server.js"
   },
   "scripts": {
-    "start": "cross-env NODE_ENV=production electron .",
-    "dev": "concurrently \"vite\" \"cross-env NODE_ENV=development electron .\"",
+    "start": "node src/main/server.js",
+    "dev": "concurrently \"vite\" \"nodemon src/main/server.js\"",
     "build": "vite build",
-    "build:bin": "pkg . --targets node18-macos-arm64,node18-macos-x64,node18-linux-x64,node18-win-x64 --output dist/youtube-downloader-gui",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\"",
     "test": "jest"
@@ -46,25 +46,18 @@
   },
   "homepage": "https://github.com/harveyzhang814/youtube-downloader-gui#readme",
   "dependencies": {
-    "electron-is-dev": "^3.0.1",
-    "electron-store": "^10.0.1",
+    "express": "^4.21.2",
+    "open": "^9.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.4.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
-    "cross-env": "^7.0.3",
-    "electron": "^35.1.2",
     "eslint": "^9.23.0",
-    "pkg": "^5.8.1",
-    "postcss": "^8.5.3",
+    "nodemon": "^3.1.10",
     "prettier": "^3.5.3",
-    "tailwindcss": "^4.1.0",
-    "vite": "^6.2.4",
-    "wait-on": "^8.0.3"
+    "vite": "^6.2.4"
   }
 }
