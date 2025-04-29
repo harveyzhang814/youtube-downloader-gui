@@ -18,6 +18,20 @@ After installation, you can run the application from any terminal:
 youtube-downloader-gui
 ```
 
+## Uninstallation
+
+To uninstall the application, you can use the following command:
+
+```bash
+curl -o- https://raw.githubusercontent.com/harveyzhang814/youtube-downloader-gui/main/uninstall.sh | bash
+```
+
+This will:
+- Remove the application binary
+- Remove the command from your PATH
+- Optionally remove yt-dlp if you no longer need it
+- Keep ffmpeg as it might be used by other applications
+
 ## Features
 
 - **User-friendly Interface**: Clean, macOS-styled design across all platforms
