@@ -27,10 +27,10 @@ const App = () => {
         }
         const deps = await response.json();
         console.log('Dependencies check result:', deps);
-        setDependencies(deps);
-        if (!deps.ytdlp || !deps.ffmpeg) {
-          setDependencyCheckShown(true);
-        }
+      setDependencies(deps);
+      if (!deps.ytdlp || !deps.ffmpeg) {
+        setDependencyCheckShown(true);
+      }
       } catch (error) {
         console.error('Dependencies check failed:', error);
         setDependencyError(error.message);
@@ -83,7 +83,7 @@ const App = () => {
       await fetch(`/api/downloads/${downloadId}`, {
         method: 'DELETE',
       });
-      setDownloads(prev => prev.filter(download => download.id !== downloadId));
+    setDownloads(prev => prev.filter(download => download.id !== downloadId));
     } catch (error) {
       console.error('Failed to delete download:', error);
     }

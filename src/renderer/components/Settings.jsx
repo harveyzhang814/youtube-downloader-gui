@@ -12,7 +12,7 @@ const Settings = ({ onClose }) => {
       .then(res => res.json())
       .then(setSettings)
       .catch(error => {
-        console.error('Error loading settings:', error);
+      console.error('Error loading settings:', error);
       });
   }, []);
 
@@ -23,8 +23,8 @@ const Settings = ({ onClose }) => {
         throw new Error('Failed to select directory');
       }
       const { path } = await response.json();
-      if (path) {
-        setSettings(prev => ({ ...prev, downloadPath: path }));
+    if (path) {
+      setSettings(prev => ({ ...prev, downloadPath: path }));
       }
     } catch (error) {
       console.error('Error selecting directory:', error);
@@ -171,7 +171,7 @@ const Settings = ({ onClose }) => {
             }}>
               Browser Cookie Source
             </label>
-            <select
+            <select 
               value={settings.browserCookie}
               onChange={handleBrowserCookieChange}
               style={{
@@ -199,7 +199,7 @@ const Settings = ({ onClose }) => {
         justifyContent: 'flex-end',
         gap: '8px'
       }}>
-        <button
+        <button 
           onClick={onClose}
           style={{
             padding: '8px 16px',

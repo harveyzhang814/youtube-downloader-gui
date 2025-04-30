@@ -160,10 +160,10 @@ const DependencyCheck = ({ dependencies, error, onClose }) => {
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+          </svg>
           </button>
         </div>
-
+        
         <div style={{ padding: '16px' }}>
           <p style={{
             fontSize: '14px',
@@ -206,10 +206,10 @@ const DependencyCheck = ({ dependencies, error, onClose }) => {
               </li>
             ))}
           </ul>
-
+          
           {getInstallationInstructions()}
         </div>
-
+        
         <div style={{
           padding: '16px',
           borderTop: '1px solid rgba(0,0,0,0.1)',
