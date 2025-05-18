@@ -70,7 +70,7 @@ const App = () => {
     }
     
     try {
-      await ipcRenderer.invoke('download-video', downloadData);
+      const downloadId = await ipcRenderer.invoke('download-video', downloadData);
       setIsNewTaskModalOpen(false);
     } catch (error) {
       console.error('Download failed:', error);

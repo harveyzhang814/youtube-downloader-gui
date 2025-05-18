@@ -15,6 +15,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [saveSubsAsFile, setSaveSubsAsFile] = useState(true);
 
   // List of available subtitle languages
   const availableSubtitles = [
@@ -27,9 +28,27 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
     { code: 'ru', name: 'Russian' },
     { code: 'ja', name: 'Japanese' },
     { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
+    { code: 'zh-Hans', name: 'Chinese (Simplified)' },
+    { code: 'zh-Hant', name: 'Chinese (Traditional)' },
     { code: 'ar', name: 'Arabic' },
-    { code: 'hi', name: 'Hindi' }
+    { code: 'hi', name: 'Hindi' },
+    { code: 'nl', name: 'Dutch' },
+    { code: 'pl', name: 'Polish' },
+    { code: 'tr', name: 'Turkish' },
+    { code: 'vi', name: 'Vietnamese' },
+    { code: 'th', name: 'Thai' },
+    { code: 'id', name: 'Indonesian' },
+    { code: 'ms', name: 'Malay' },
+    { code: 'sv', name: 'Swedish' },
+    { code: 'da', name: 'Danish' },
+    { code: 'fi', name: 'Finnish' },
+    { code: 'no', name: 'Norwegian' },
+    { code: 'el', name: 'Greek' },
+    { code: 'he', name: 'Hebrew' },
+    { code: 'cs', name: 'Czech' },
+    { code: 'hu', name: 'Hungarian' },
+    { code: 'ro', name: 'Romanian' },
+    { code: 'uk', name: 'Ukrainian' }
   ];
 
   const filteredSubtitles = availableSubtitles.filter(lang => 
@@ -99,8 +118,10 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
       url,
       videoFormat: selectedVideoFormat,
       audioFormat: selectedAudioFormat,
-      subtitles: subtitles.length > 0 ? subtitles.join(',') : null
+      subtitles: subtitles.length > 0 ? subtitles.join(',') : null,
+      saveSubsAsFile
     });
+    onClose();
   };
 
   const handleSubtitleToggle = (langCode) => {
@@ -583,6 +604,26 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                 }}
               />
             </div>
+            {subtitles.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '13px',
+                  color: '#666',
+                  cursor: 'pointer'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={saveSubsAsFile}
+                    onChange={(e) => setSaveSubsAsFile(e.target.checked)}
+                    style={{ margin: 0 }}
+                  />
+                  Save subtitles as separate files
+                </label>
+              </div>
+            )}
           </div>
 
           {isSubtitleDropdownOpen && filteredSubtitles.length > 0 && (

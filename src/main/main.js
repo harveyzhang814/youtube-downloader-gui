@@ -113,13 +113,21 @@ ipcMain.on('update-settings', (event, settings) => {
 ipcMain.handle('get-available-formats', async (event, url) => {
   return new Promise((resolve, reject) => {
     const browserCookie = store.get('browserCookie');
-    console.log('Fetching formats with browser cookie:', browserCookie);
-    
-    const ytdlCommand = spawn('yt-dlp', [
+    const args = [
       '--cookies-from-browser', browserCookie,
       '-F',
       url
-    ]);
+    ];
+    // 只在日志显示时添加引号
+    const logArgs = args.map(arg => {
+      if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', ...logArgs);
+    
+    const ytdlCommand = spawn('yt-dlp', args);
 
     let stdout = '';
     let stderr = '';
@@ -280,11 +288,21 @@ ipcMain.handle('select-download-path', async () => {
 ipcMain.handle('get-video-info', async (event, url) => {
   return new Promise((resolve, reject) => {
     const browserCookie = store.get('browserCookie');
-    const ytdlCommand = spawn('yt-dlp', [
+    const args = [
       '--cookies-from-browser', browserCookie,
       '--dump-json',
       url
-    ]);
+    ];
+    // 只在日志显示时添加引号
+    const logArgs = args.map(arg => {
+      if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', ...logArgs);
+    
+    const ytdlCommand = spawn('yt-dlp', args);
 
     let data = '';
     ytdlCommand.stdout.on('data', (chunk) => {
@@ -317,32 +335,36 @@ ipcMain.handle('get-video-info', async (event, url) => {
 });
 
 // Handle video download
-ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, subtitles }) => {
+ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, subtitles, saveSubsAsFile }) => {
   const downloadPath = store.get('downloadPath');
   const browserCookie = store.get('browserCookie');
 
-  // Prepare command arguments
-  const args = [
+  // Prepare video/audio download command arguments
+  const videoArgs = [
     '--cookies-from-browser', browserCookie,
     '-o', `${downloadPath}/%(title)s.%(ext)s`
   ];
 
   // Combine video and audio formats if both are selected
   if (videoFormat && audioFormat) {
-    args.push('-f', `${videoFormat}+${audioFormat}`);
+    videoArgs.push('-f', `${videoFormat}+${audioFormat}`);
   } else {
-    args.push('-f', videoFormat || audioFormat);
-  }
-
-  if (subtitles) {
-    args.push('--sub-langs', subtitles);
-    args.push('--write-auto-sub');
+    videoArgs.push('-f', videoFormat || audioFormat);
   }
 
   // Add the URL at the end
-  args.push(url);
+  videoArgs.push(url);
 
-  const downloadProcess = spawn('yt-dlp', args);
+  // 只在日志显示时添加引号
+  const logVideoArgs = videoArgs.map(arg => {
+    if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+      return `"${arg}"`;
+    }
+    return arg;
+  });
+  console.log('\n[yt-dlp] 执行视频下载命令:', 'yt-dlp', ...logVideoArgs);
+  
+  const downloadProcess = spawn('yt-dlp', videoArgs);
   
   let downloadId = Date.now().toString();
   let downloadInfo = {
@@ -404,13 +426,110 @@ ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, 
   });
 
   downloadProcess.stderr.on('data', (data) => {
-    console.error(`Error: ${data}`);
+    const errorMsg = data.toString();
+    console.error(`[yt-dlp] 错误: ${errorMsg}`);
+    
+    downloadInfo.status = 'error';
+    downloadInfo.error = errorMsg;
+    mainWindow.webContents.send('download-progress', downloadInfo);
   });
 
-  downloadProcess.on('close', (code) => {
-    downloadInfo.status = code === 0 ? 'completed' : 'error';
-    mainWindow.webContents.send('download-finished', downloadInfo);
+  // Wait for video/audio download to complete
+  await new Promise((resolve, reject) => {
+    downloadProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error('Video/audio download failed'));
+      }
+    });
   });
+
+  // If subtitles are requested, download them separately
+  if (subtitles) {
+    const subtitleArgs = [
+      '--skip-download',
+      '--sub-langs', subtitles,
+      '--write-auto-sub',
+      '-o', `${downloadPath}/%(title)s.%(ext)s`,
+      url
+    ];
+
+    const logSubtitleArgs = subtitleArgs.map(arg => {
+      if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    console.log('\n[yt-dlp] 执行字幕下载命令:', 'yt-dlp', ...logSubtitleArgs);
+
+    const subtitleProcess = spawn('yt-dlp', subtitleArgs);
+
+    subtitleProcess.stderr.on('data', (data) => {
+      const errorMsg = data.toString();
+      console.error(`[yt-dlp] 字幕下载错误: ${errorMsg}`);
+      if (!errorMsg.includes('Did not get any data blocks')) {
+        downloadInfo.warning = '字幕下载可能失败';
+        mainWindow.webContents.send('download-progress', downloadInfo);
+      }
+    });
+
+    // Wait for subtitle download to complete
+    await new Promise((resolve) => {
+      subtitleProcess.on('close', (code) => {
+        resolve();
+      });
+    });
+
+    // If saveSubsAsFile is false, embed subtitles into the video file
+    if (!saveSubsAsFile) {
+      try {
+        const videoFile = `${downloadPath}/${downloadInfo.title}.mp4`;
+        const subtitleFile = `${downloadPath}/${downloadInfo.title}.${subtitles}.vtt`;
+        
+        if (fs.existsSync(subtitleFile)) {
+          const ffmpegArgs = [
+            '-i', videoFile,
+            '-i', subtitleFile,
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+            '-c:s', 'mov_text',
+            '-metadata:s:s:0', `language=${subtitles}`,
+            `${downloadPath}/${downloadInfo.title}_with_subs.mp4`
+          ];
+
+          const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+
+          ffmpegProcess.stderr.on('data', (data) => {
+            console.error(`[ffmpeg] 错误: ${data}`);
+          });
+
+          await new Promise((resolve, reject) => {
+            ffmpegProcess.on('close', (code) => {
+              if (code === 0) {
+                // Replace original file with the one containing embedded subtitles
+                fs.unlinkSync(videoFile);
+                fs.renameSync(`${downloadPath}/${downloadInfo.title}_with_subs.mp4`, videoFile);
+                resolve();
+              } else {
+                reject(new Error('Failed to embed subtitles'));
+              }
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error embedding subtitles:', error);
+        downloadInfo.warning = '字幕嵌入失败';
+        mainWindow.webContents.send('download-progress', downloadInfo);
+      }
+    }
+  }
+
+  downloadInfo.status = 'completed';
+  if (downloadInfo.warning) {
+    downloadInfo.status = 'completed_with_warning';
+  }
+  mainWindow.webContents.send('download-finished', downloadInfo);
 
   // Return the download ID to the renderer
   return downloadId;
@@ -425,7 +544,9 @@ ipcMain.handle('open-file-location', async (event, filePath) => {
 // Check for updates to yt-dlp
 ipcMain.handle('update-ytdlp', async () => {
   return new Promise((resolve) => {
-    const updateProcess = spawn('yt-dlp', ['-U']);
+    const args = ['-U'];
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', args.join(' '));
+    const updateProcess = spawn('yt-dlp', args);
     
     updateProcess.on('close', (code) => {
       resolve(code === 0);
