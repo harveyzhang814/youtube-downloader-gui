@@ -5,7 +5,7 @@ const ipcRenderer = window.require ? window.require('electron').ipcRenderer : nu
 
 const Settings = ({ onClose }) => {
   const [settings, setSettings] = useState({
-    downloadPath: '',
+    downloadLocation: '',
     browserCookie: 'chrome'
   });
 
@@ -16,12 +16,12 @@ const Settings = ({ onClose }) => {
     }
     
     // Load settings from main process
-    try {
-      const savedSettings = ipcRenderer.sendSync('get-settings');
-      setSettings(savedSettings);
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
+    ipcRenderer.invoke('settings:getDownloadLocation').then(downloadLocation => {
+      setSettings(prev => ({ ...prev, downloadLocation }));
+    });
+    ipcRenderer.invoke('settings:getCookieSource').then(cookieSource => {
+      setSettings(prev => ({ ...prev, browserCookie: cookieSource }));
+    });
   }, []);
 
   const handleDownloadPathSelect = async () => {
@@ -30,24 +30,30 @@ const Settings = ({ onClose }) => {
       return;
     }
     
-    const path = await ipcRenderer.invoke('select-download-path');
+    const path = await ipcRenderer.invoke('dialog:chooseDirectory');
     if (path) {
-      setSettings(prev => ({ ...prev, downloadPath: path }));
+      setSettings(prev => ({ ...prev, downloadLocation: path }));
     }
   };
 
   const handleBrowserCookieChange = (e) => {
-    setSettings(prev => ({ ...prev, browserCookie: e.target.value }));
+    const newSource = e.target.value;
+    setSettings(prev => ({ ...prev, browserCookie: newSource }));
+    if (ipcRenderer) {
+      ipcRenderer.invoke('settings:setCookieSource', newSource);
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!ipcRenderer) {
       console.error('Electron IPC not available');
       onClose();
       return;
     }
-    
-    ipcRenderer.sendSync('update-settings', settings);
+    // 保存下载目录
+    await ipcRenderer.invoke('settings:setDownloadLocation', settings.downloadLocation);
+    // 保存 Cookie Source
+    await ipcRenderer.invoke('settings:setCookieSource', settings.browserCookie);
     onClose();
   };
 
@@ -132,7 +138,7 @@ const Settings = ({ onClose }) => {
                   borderRadius: '6px',
                   backgroundColor: 'white'
                 }}
-                value={settings.downloadPath}
+                value={settings.downloadLocation}
                 readOnly
               />
               <button 

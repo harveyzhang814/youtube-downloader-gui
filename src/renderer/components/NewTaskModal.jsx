@@ -114,14 +114,36 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
       setError('Please select at least one format (video or audio)');
       return;
     }
-    onSubmit({ 
+
+    // 查找完整格式对象
+    const videoObj = videoFormats.find(f => f.id === selectedVideoFormat);
+    const audioObj = audioFormats.find(f => f.id === selectedAudioFormat);
+
+    // 组装 settings 字段
+    const settings = {
       url,
-      videoFormat: selectedVideoFormat,
-      audioFormat: selectedAudioFormat,
-      subtitles: subtitles.length > 0 ? subtitles.join(',') : null,
-      saveSubsAsFile
-    });
-    onClose();
+      video: videoObj
+        ? {
+            id: videoObj.id,
+            resolution: videoObj.resolution,
+            format: videoObj.ext
+          }
+        : null,
+      audio: audioObj
+        ? {
+            id: audioObj.id,
+            sampleRate: audioObj.asr || '',
+            format: audioObj.ext
+          }
+        : null,
+      subtitles: {
+        languages: subtitles,
+        separateFile: saveSubsAsFile
+      }
+    };
+
+    onSubmit(settings);
+    // onClose 由 App 控制
   };
 
   const handleSubtitleToggle = (langCode) => {

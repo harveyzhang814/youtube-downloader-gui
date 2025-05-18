@@ -7,6 +7,7 @@ const { exec, spawn } = require('child_process');
 const Store = require('electron-store').default;
 const fs = require('fs');
 const { getLanguageName } = require('./languageMap');
+const IPCHandler = require('./ipc/IPCHandler');
 
 // Initialize store for settings
 const store = new Store({
@@ -58,6 +59,9 @@ const createWindow = async () => {
     titleBarStyle: 'hiddenInset', // macOS style window
     backgroundColor: '#f5f5f7',
   });
+
+  // 注册所有 IPC handler
+  IPCHandler.register(mainWindow);
 
   // Load the index.html from vite dev server if in development
   // or from the built file if in production

@@ -63,17 +63,20 @@ const App = () => {
     };
   }, []);
 
-  const handleStartDownload = async (downloadData) => {
+  const handleStartDownload = async (settings) => {
     if (!ipcRenderer) {
       console.error('Electron IPC not available');
       return;
     }
-    
     try {
-      const downloadId = await ipcRenderer.invoke('download-video', downloadData);
+      // 1. 创建任务
+      const task = await ipcRenderer.invoke('task:create', settings);
+      // 2. 启动任务
+      await ipcRenderer.invoke('task:start', task.id);
       setIsNewTaskModalOpen(false);
+      // DownloadList 会自动刷新任务列表
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('Task creation/start failed:', error);
     }
   };
 
@@ -139,7 +142,6 @@ const App = () => {
                 path="/" 
                 element={
                   <DownloadList 
-                    downloads={downloads} 
                     onDelete={handleDeleteDownload}
                     onOpenLocation={handleOpenFileLocation}
                   />
