@@ -1,8 +1,44 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import DownloadItem from './DownloadItem';
 
-const DownloadList = ({ downloads, onDelete, onOpenLocation }) => {
-  if (downloads.length === 0) {
+const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
+
+const DownloadList = (props) => {
+  const [tasks, setTasks] = useState([]);
+
+  // 定时刷新任务列表
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const fetchTasks = async () => {
+      const list = await ipcRenderer.invoke('task:scan');
+      console.log('任务列表', list); // 调试用
+      setTasks(list);
+    };
+    fetchTasks();
+    const timer = setInterval(fetchTasks, 2000);
+    // 监听主进程推送的进度
+    const handler = (event, data) => {
+      setTasks(prevTasks => prevTasks.map(
+        t => t.id === data.taskId ? { ...t, ...data } : t
+      ));
+    };
+    ipcRenderer.on('task:progress', handler);
+    return () => {
+      clearInterval(timer);
+      ipcRenderer.removeListener('task:progress', handler);
+    };
+  }, []);
+
+  // 删除任务
+  const handleDelete = async (taskId) => {
+    if (!ipcRenderer) return;
+    await ipcRenderer.invoke('task:delete', taskId);
+    // 删除后立即刷新
+    const list = await ipcRenderer.invoke('task:scan');
+    setTasks(list);
+  };
+
+  if (!tasks || tasks.length === 0) {
     return (
       <div style={{
         display: 'flex',
@@ -52,12 +88,12 @@ const DownloadList = ({ downloads, onDelete, onOpenLocation }) => {
       margin: '0 auto',
       padding: '16px'
     }}>
-      {downloads.map(download => (
+      {tasks.map(task => (
         <DownloadItem 
-          key={download.id}
-          download={download}
-          onDelete={() => onDelete(download.id)}
-          onOpenLocation={() => onOpenLocation(`${download.path}/${download.title}`)}
+          key={task.id}
+          task={task}
+          onDelete={() => handleDelete(task.id)}
+          onOpenLocation={(outputDir) => props.onOpenLocation && props.onOpenLocation(outputDir)}
         />
       ))}
     </div>

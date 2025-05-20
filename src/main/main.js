@@ -6,6 +6,8 @@ const isDev = require('electron-is-dev');
 const { exec, spawn } = require('child_process');
 const Store = require('electron-store').default;
 const fs = require('fs');
+const { getLanguageName } = require('./languageMap');
+const IPCHandler = require('./ipc/IPCHandler');
 
 // Initialize store for settings
 const store = new Store({
@@ -57,6 +59,9 @@ const createWindow = async () => {
     titleBarStyle: 'hiddenInset', // macOS style window
     backgroundColor: '#f5f5f7',
   });
+
+  // 注册所有 IPC handler
+  IPCHandler.register(mainWindow);
 
   // Load the index.html from vite dev server if in development
   // or from the built file if in production
@@ -113,13 +118,21 @@ ipcMain.on('update-settings', (event, settings) => {
 ipcMain.handle('get-available-formats', async (event, url) => {
   return new Promise((resolve, reject) => {
     const browserCookie = store.get('browserCookie');
-    console.log('Fetching formats with browser cookie:', browserCookie);
-    
-    const ytdlCommand = spawn('yt-dlp', [
+    const args = [
       '--cookies-from-browser', browserCookie,
       '-F',
       url
-    ]);
+    ];
+    // 只在日志显示时添加引号
+    const logArgs = args.map(arg => {
+      if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', ...logArgs);
+    
+    const ytdlCommand = spawn('yt-dlp', args);
 
     let stdout = '';
     let stderr = '';
@@ -184,6 +197,17 @@ ipcMain.handle('get-available-formats', async (event, url) => {
                 // Determine if this is an audio-only format
                 const isAudioOnly = description.toLowerCase().includes('audio only') || resolution === 'audio';
 
+                // Extract audio language if present (only for audio)
+                let audioLang = '';
+                if (isAudioOnly) {
+                  // 匹配 [en-US] English (United States) original (default), ...
+                  // 提取第一个方括号后紧跟的第一个带括号的语言描述
+                  const langMatch = description.match(/\[[^\]]*\]\s*([^\(\[,]+(?:\([^\)]*\))?)/);
+                  if (langMatch) {
+                    audioLang = langMatch[1].trim();
+                  }
+                }
+
                 // Extract VBR (Video Bitrate) if available
                 let vbr = null;
                 const vbrMatch = description.match(/(\d+)k.*?fps/i);
@@ -215,7 +239,8 @@ ipcMain.handle('get-available-formats', async (event, url) => {
                   isAudioOnly,
                   vbr: vbr || '',
                   abr: abr || '',
-                  asr: asr || ''
+                  asr: asr || '',
+                  audioLang: audioLang || ''
                 };
               }
               return null;
@@ -280,11 +305,21 @@ ipcMain.handle('select-download-path', async () => {
 ipcMain.handle('get-video-info', async (event, url) => {
   return new Promise((resolve, reject) => {
     const browserCookie = store.get('browserCookie');
-    const ytdlCommand = spawn('yt-dlp', [
+    const args = [
       '--cookies-from-browser', browserCookie,
       '--dump-json',
       url
-    ]);
+    ];
+    // 只在日志显示时添加引号
+    const logArgs = args.map(arg => {
+      if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', ...logArgs);
+    
+    const ytdlCommand = spawn('yt-dlp', args);
 
     let data = '';
     ytdlCommand.stdout.on('data', (chunk) => {
@@ -317,33 +352,10 @@ ipcMain.handle('get-video-info', async (event, url) => {
 });
 
 // Handle video download
-ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, subtitles }) => {
+ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, subtitles, saveSubsAsFile }) => {
   const downloadPath = store.get('downloadPath');
   const browserCookie = store.get('browserCookie');
 
-  // Prepare command arguments
-  const args = [
-    '--cookies-from-browser', browserCookie,
-    '-o', `${downloadPath}/%(title)s.%(ext)s`
-  ];
-
-  // Combine video and audio formats if both are selected
-  if (videoFormat && audioFormat) {
-    args.push('-f', `${videoFormat}+${audioFormat}`);
-  } else {
-    args.push('-f', videoFormat || audioFormat);
-  }
-
-  if (subtitles) {
-    args.push('--sub-langs', subtitles);
-    args.push('--write-auto-sub');
-  }
-
-  // Add the URL at the end
-  args.push(url);
-
-  const downloadProcess = spawn('yt-dlp', args);
-  
   let downloadId = Date.now().toString();
   let downloadInfo = {
     id: downloadId,
@@ -360,60 +372,470 @@ ipcMain.handle('download-video', async (event, { url, videoFormat, audioFormat, 
   // Send initial download info
   mainWindow.webContents.send('download-started', downloadInfo);
 
-  downloadProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    
-    // Try to parse the progress information from yt-dlp output
-    if (output.includes('[download]')) {
-      // Extract progress percentage
-      const progressMatch = output.match(/(\d+\.\d+)%/);
-      if (progressMatch) {
-        downloadInfo.progress = parseFloat(progressMatch[1]);
-      }
+  try {
+    // 并行下载视频和音频
+    const downloadPromises = [];
 
-      // Extract download speed
-      const speedMatch = output.match(/at\s+(.*?)\s+/);
-      if (speedMatch) {
-        downloadInfo.speed = speedMatch[1];
-      }
+    // 视频下载
+    if (videoFormat) {
+      const videoArgs = [
+        '--cookies-from-browser', browserCookie,
+        '-f', videoFormat,
+        '-o', `%(title)s_video.%(ext)s`,
+        url
+      ];
 
-      // Extract file size
-      const sizeMatch = output.match(/of\s+~?(.*?)\s+/);
-      if (sizeMatch) {
-        downloadInfo.size = sizeMatch[1];
-      }
+      const logVideoArgs = videoArgs.map(arg => {
+        if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+          return `"${arg}"`;
+        }
+        return arg;
+      });
+      console.log('\n[yt-dlp] 执行视频下载命令:', 'yt-dlp', ...logVideoArgs);
 
-      // Extract estimated time
-      const etaMatch = output.match(/ETA\s+(.*?)\s*$/);
-      if (etaMatch) {
-        downloadInfo.eta = etaMatch[1];
-      }
+      const videoProcess = spawn('yt-dlp', videoArgs, { cwd: downloadPath });
+      let videoTitle = '';
 
-      // Update download info in renderer
-      mainWindow.webContents.send('download-progress', downloadInfo);
+      console.log('\n[yt-dlp] 视频下载进程已启动，PID:', videoProcess.pid);
+
+      videoProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log('[yt-dlp] 视频下载输出:', output);
+        if (output.includes('[download]')) {
+          // 提取标题 - 完全排除 Destination: 和路径信息
+          const titleMatch = output.match(/\[download\](?:\s+Destination:\s+.*?[/\\])?(?:.*?[/\\])?([^/\\]+?)(?:_video\.| has already been downloaded)/);
+          if (titleMatch && !videoTitle) {
+            videoTitle = titleMatch[1].trim();
+            console.log('[yt-dlp] 提取的视频标题:', videoTitle);
+            downloadInfo.title = videoTitle;
+            mainWindow.webContents.send('download-progress', downloadInfo);
+          }
+        }
+      });
+
+      videoProcess.stderr.on('data', (data) => {
+        console.error(`[yt-dlp] 视频下载错误: ${data}`);
+      });
+
+      downloadPromises.push(new Promise((resolve, reject) => {
+        videoProcess.on('close', (code) => {
+          console.log(`\n[yt-dlp] 视频下载进程已结束，PID: ${videoProcess.pid}, 退出码: ${code}`);
+          if (code === 0) {
+            resolve({ type: 'video', title: videoTitle });
+          } else {
+            reject(new Error('Video download failed'));
+          }
+        });
+      }));
     }
 
-    // Try to extract the title if we don't have it yet
-    if (downloadInfo.title === 'Loading...' && output.includes('[download]')) {
-      const titleMatch = output.match(/\[download\]\s+Destination:\s+.*?[/\\](.+?)\./);
-      if (titleMatch) {
-        downloadInfo.title = titleMatch[1];
-        mainWindow.webContents.send('download-progress', downloadInfo);
+    // 音频下载
+    if (audioFormat) {
+      const audioArgs = [
+        '--cookies-from-browser', browserCookie,
+        '-f', audioFormat,
+        '-o', `%(title)s_audio.%(ext)s`,
+        url
+      ];
+
+      const logAudioArgs = audioArgs.map(arg => {
+        if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+          return `"${arg}"`;
+        }
+        return arg;
+      });
+      console.log('\n[yt-dlp] 执行音频下载命令:', 'yt-dlp', ...logAudioArgs);
+
+      const audioProcess = spawn('yt-dlp', audioArgs, { cwd: downloadPath });
+      let audioTitle = '';
+
+      console.log('\n[yt-dlp] 音频下载进程已启动，PID:', audioProcess.pid);
+
+      audioProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log('[yt-dlp] 音频下载输出:', output);
+        if (output.includes('[download]')) {
+          // 提取标题 - 完全排除 Destination: 和路径信息
+          const titleMatch = output.match(/\[download\](?:\s+Destination:\s+.*?[/\\])?(?:.*?[/\\])?([^/\\]+?)(?:_audio\.| has already been downloaded)/);
+          if (titleMatch && !audioTitle) {
+            audioTitle = titleMatch[1].trim();
+            console.log('[yt-dlp] 提取的音频标题:', audioTitle);
+            if (!downloadInfo.title || downloadInfo.title === 'Loading...') {
+              downloadInfo.title = audioTitle;
+              mainWindow.webContents.send('download-progress', downloadInfo);
+            }
+          }
+        }
+      });
+
+      audioProcess.stderr.on('data', (data) => {
+        console.error(`[yt-dlp] 音频下载错误: ${data}`);
+      });
+
+      downloadPromises.push(new Promise((resolve, reject) => {
+        audioProcess.on('close', (code) => {
+          console.log(`\n[yt-dlp] 音频下载进程已结束，PID: ${audioProcess.pid}, 退出码: ${code}`);
+          if (code === 0) {
+            resolve({ type: 'audio', title: audioTitle });
+          } else {
+            reject(new Error('Audio download failed'));
+          }
+        });
+      }));
+    }
+
+    // 等待所有下载完成
+    const results = await Promise.all(downloadPromises);
+    const titles = results.map(r => r.title).filter(Boolean);
+    // 清理标题中的 Destination: 前缀
+    const cleanTitles = titles.map(title => title.replace(/^Destination:\s+/i, '').trim());
+    const finalTitle = cleanTitles[0] || 'Unknown';
+
+    console.log('[yt-dlp] 下载完成，最终标题:', finalTitle);
+    console.log('[yt-dlp] 所有标题:', cleanTitles);
+
+    // 如果同时下载了视频和音频，需要合并
+    if (videoFormat && audioFormat) {
+      // 确保 downloadPath 是绝对路径
+      const absDownloadPath = path.isAbsolute(downloadPath) ? downloadPath : path.resolve(downloadPath);
+      
+      // 查找下载的文件
+      const files = fs.readdirSync(absDownloadPath);
+      console.log('[yt-dlp] 目录中的文件:', files);
+      
+      // 使用更宽松的匹配条件
+      const videoFile = files.find(f => f.includes('_video.'));
+      const audioFile = files.find(f => f.includes('_audio.'));
+      
+      if (!videoFile || !audioFile) {
+        console.error('[ffmpeg] 找不到下载的文件:', { videoFile, audioFile });
+        throw new Error('找不到下载的视频或音频文件');
+      }
+
+      console.log('[ffmpeg] 找到的文件:', {
+        video: videoFile,
+        audio: audioFile
+      });
+
+      const videoFilePath = path.join(absDownloadPath, videoFile);
+      const audioFilePath = path.join(absDownloadPath, audioFile);
+      const outputFile = path.join(absDownloadPath, `${finalTitle}.mp4`);
+
+      // 检查文件是否存在
+      if (!fs.existsSync(videoFilePath)) {
+        console.error('[ffmpeg] 视频文件不存在:', videoFilePath);
+        throw new Error(`视频文件不存在: ${videoFilePath}`);
+      }
+      if (!fs.existsSync(audioFilePath)) {
+        console.error('[ffmpeg] 音频文件不存在:', audioFilePath);
+        throw new Error(`音频文件不存在: ${audioFilePath}`);
+      }
+
+      console.log('[ffmpeg] 找到的文件:', {
+        video: videoFile,
+        audio: audioFile
+      });
+
+      const ffmpegArgs = [
+        '-i', videoFilePath,
+        '-i', audioFilePath,
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-strict', 'experimental',
+        outputFile
+      ];
+
+      // 使用 spawn 时也设置工作目录
+      const mergeProcess = spawn('ffmpeg', ffmpegArgs, { cwd: absDownloadPath });
+      let errorOutput = '';
+
+      console.log('\n[ffmpeg] 合并进程已启动，PID:', mergeProcess.pid);
+      console.log('[ffmpeg] 下载路径:', absDownloadPath);
+      console.log('[ffmpeg] 输入文件:', {
+        video: videoFile,
+        audio: audioFile
+      });
+      console.log('[ffmpeg] 输出文件:', outputFile);
+      console.log('[ffmpeg] 完整命令:', 'ffmpeg', ffmpegArgs.join(' '));
+
+      mergeProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        // 检查是否是进度信息
+        if (output.includes('frame=') || output.includes('fps=') || output.includes('time=') || output.includes('bitrate=')) {
+          console.log(`[ffmpeg] 进度: ${output.trim()}`);
+        } else if (output.includes('Error') || output.includes('error') || output.includes('Invalid')) {
+          // 只记录真正的错误信息
+          errorOutput += output;
+          console.error(`[ffmpeg] 错误: ${output}`);
+        } else {
+          // 其他信息作为普通日志输出
+          console.log(`[ffmpeg] 信息: ${output.trim()}`);
+        }
+      });
+
+      await new Promise((resolve, reject) => {
+        mergeProcess.on('close', (code) => {
+          console.log(`\n[ffmpeg] 合并进程已结束，PID: ${mergeProcess.pid}, 退出码: ${code}`);
+          
+          if (code === 0) {
+            // 检查输出文件是否存在且大小正常
+            if (fs.existsSync(outputFile)) {
+              const stats = fs.statSync(outputFile);
+              if (stats.size > 0) {
+                console.log('[ffmpeg] 合并成功，输出文件大小:', stats.size, 'bytes');
+                // 删除临时文件
+                try {
+                  fs.unlinkSync(videoFilePath);
+                  fs.unlinkSync(audioFilePath);
+                  console.log('[ffmpeg] 临时文件已删除');
+                  resolve();
+                } catch (error) {
+                  console.error('[ffmpeg] 删除临时文件失败:', error);
+                  // 继续执行，因为合并已经成功
+                  resolve();
+                }
+              } else {
+                reject(new Error('合并后的文件大小为0'));
+              }
+            } else {
+              reject(new Error('合并后的文件不存在'));
+            }
+          } else {
+            reject(new Error(`合并失败 (退出码: ${code}): ${errorOutput}`));
+          }
+        });
+      });
+    }
+
+    // 如果需要下载字幕
+    if (subtitles) {
+      const subtitleArgs = [
+        '--skip-download',
+        '--sub-langs', subtitles,
+        '--write-auto-sub',
+        '-o', `${downloadPath}/%(title)s.%(ext)s`,
+        url
+      ];
+
+      const logSubtitleArgs = subtitleArgs.map(arg => {
+        if (arg.includes(' ') || arg.includes('&') || arg.includes('?')) {
+          return `"${arg}"`;
+        }
+        return arg;
+      });
+      console.log('\n[yt-dlp] 执行字幕下载命令:', 'yt-dlp', ...logSubtitleArgs);
+
+      const subtitleProcess = spawn('yt-dlp', subtitleArgs);
+
+      console.log('\n[yt-dlp] 字幕下载进程已启动，PID:', subtitleProcess.pid);
+
+      subtitleProcess.stderr.on('data', (data) => {
+        const errorMsg = data.toString();
+        console.error(`[yt-dlp] 字幕下载错误: ${errorMsg}`);
+        if (!errorMsg.includes('Did not get any data blocks')) {
+          downloadInfo.warning = '字幕下载可能失败';
+          mainWindow.webContents.send('download-progress', downloadInfo);
+        }
+      });
+
+      await new Promise((resolve) => {
+        subtitleProcess.on('close', (code) => {
+          console.log(`\n[yt-dlp] 字幕下载进程已结束，PID: ${subtitleProcess.pid}, 退出码: ${code}`);
+          resolve();
+        });
+      });
+
+      // 如果需要嵌入字幕
+      console.log('[yt-dlp] 字幕嵌入条件检查:', {
+        saveSubsAsFile,
+        type: typeof saveSubsAsFile,
+        subtitles,
+        finalTitle
+      });
+
+      if (saveSubsAsFile === false) {  // 明确检查是否为 false
+        try {
+          // 获取视频文件的实际扩展名
+          const videoFile = path.join(downloadPath, `${finalTitle}.mp4`);
+          const videoExt = path.extname(videoFile).toLowerCase();
+          
+          // 根据容器格式选择字幕编码器
+          let subtitleCodec;
+          switch (videoExt) {
+            case '.mp4':
+              subtitleCodec = 'mov_text';  // MP4 容器使用 mov_text
+              break;
+            case '.webm':
+              subtitleCodec = 'webvtt';    // WebM 容器使用 webvtt
+              break;
+            case '.mkv':
+              subtitleCodec = 'srt';       // MKV 容器可以使用多种格式，这里使用 srt
+              break;
+            default:
+              subtitleCodec = 'mov_text';  // 默认使用 mov_text
+              console.warn(`[ffmpeg] 未知的视频容器格式 ${videoExt}，使用默认字幕编码器 mov_text`);
+          }
+
+          console.log('[ffmpeg] 视频容器格式:', videoExt);
+          console.log('[ffmpeg] 选择的字幕编码器:', subtitleCodec);
+
+          // 处理多个字幕文件
+          const subtitleLangs = subtitles.split(',');
+          const subtitleFiles = subtitleLangs.map(lang => 
+            path.join(downloadPath, `${finalTitle}.${lang}.vtt`)
+          ).filter(file => fs.existsSync(file));
+
+          console.log('[yt-dlp] 找到的字幕文件:', subtitleFiles);
+
+          if (subtitleFiles.length > 0) {
+            // 使用新的文件名格式：原文件名_subtitled.mp4
+            const outputFile = path.join(downloadPath, `${finalTitle}_subtitled${videoExt}`);
+
+            // 构建 ffmpeg 命令参数
+            const ffmpegArgs = ['-i', videoFile];
+            
+            // 添加所有字幕文件作为输入
+            subtitleFiles.forEach(file => {
+              ffmpegArgs.push('-i', file);
+            });
+
+            // 添加编码器参数
+            ffmpegArgs.push(
+              '-c:v', 'copy',
+              '-c:a', 'copy'
+            );
+
+            // 映射原始视频的所有流（视频和音频）
+            ffmpegArgs.push(
+              '-map', '0'  // 映射输入文件的所有流
+            );
+
+            // 为每个字幕流设置编码器和语言
+            subtitleFiles.forEach((_, index) => {
+              const langCode = subtitleLangs[index];
+              const langName = getLanguageName(langCode);
+              ffmpegArgs.push(
+                `-c:s:${index}`, subtitleCodec,
+                `-metadata:s:s:${index}`, `language=${langCode}`,
+                `-metadata:s:s:${index}`, `title=${langName}`,  // 使用语言名称作为标题
+                `-map`, `${index + 1}:0`  // 映射字幕流
+              );
+            });
+
+            // 添加全局元数据
+            ffmpegArgs.push(
+              '-metadata', 'title=' + finalTitle,
+              '-metadata', 'artist=YouTube',
+              '-metadata', 'comment=Downloaded with YouTube Downloader'
+            );
+
+            ffmpegArgs.push(outputFile);
+
+            console.log('\n[ffmpeg] 字幕嵌入进程准备启动');
+            console.log('[ffmpeg] 使用字幕编码器:', subtitleCodec);
+            console.log('[ffmpeg] 嵌入字幕数量:', subtitleFiles.length);
+            console.log('[ffmpeg] 字幕语言:', subtitleLangs.map(lang => `${lang} (${getLanguageName(lang)})`).join(', '));
+            console.log('[ffmpeg] 完整命令:', 'ffmpeg', ffmpegArgs.join(' '));
+
+            // 先创建进程
+            const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+
+            console.log('[ffmpeg] 字幕嵌入进程已启动，PID:', ffmpegProcess.pid);
+
+            ffmpegProcess.stderr.on('data', (data) => {
+              const output = data.toString();
+              // 检查是否是进度信息
+              if (output.includes('frame=') || output.includes('fps=') || output.includes('time=') || output.includes('bitrate=')) {
+                console.log(`[ffmpeg] 进度: ${output.trim()}`);
+              } else if (output.includes('Error') || output.includes('error') || output.includes('Invalid')) {
+                console.error(`[ffmpeg] 错误: ${output}`);
+              } else {
+                console.log(`[ffmpeg] 信息: ${output.trim()}`);
+              }
+            });
+
+            await new Promise((resolve, reject) => {
+              ffmpegProcess.on('close', (code) => {
+                console.log(`\n[ffmpeg] 字幕嵌入进程已结束，PID: ${ffmpegProcess.pid}, 退出码: ${code}`);
+                if (code === 0) {
+                  // 验证字幕是否成功嵌入
+                  const verifyProcess = spawn('ffmpeg', ['-i', outputFile]);
+                  let ffmpegOutput = '';
+
+                  verifyProcess.stderr.on('data', (data) => {
+                    ffmpegOutput += data.toString();
+                  });
+
+                  verifyProcess.on('close', (verifyCode) => {
+                    if (verifyCode === 0 || verifyCode === 1) { // ffmpeg 在显示信息时可能返回 1
+                      console.log('[ffmpeg] 视频文件信息:');
+                      console.log(ffmpegOutput);
+
+                      // 检查输出中是否包含字幕流信息
+                      const hasSubtitles = ffmpegOutput.includes('Stream #0:') && 
+                                        ffmpegOutput.includes('Subtitle:');
+                      
+                      if (hasSubtitles) {
+                        console.log('[ffmpeg] 字幕验证成功:');
+                        // 提取并显示字幕流信息
+                        const subtitleInfo = ffmpegOutput.match(/Stream #0:\d+.*?Subtitle:.*?(?=Stream|$)/gs);
+                        if (subtitleInfo) {
+                          subtitleInfo.forEach(info => {
+                            console.log('[ffmpeg] 字幕流:', info.trim());
+                            // 检查语言标签
+                            const langMatch = info.match(/language: (\w+)/);
+                            if (langMatch) {
+                              console.log('[ffmpeg] 字幕语言:', langMatch[1]);
+                            }
+                          });
+                        }
+                        console.log('[ffmpeg] 字幕嵌入成功，新文件已保存:', outputFile);
+                      } else {
+                        console.warn('[ffmpeg] 警告: 未检测到字幕流');
+                        // 显示所有可用的流信息
+                        const streamInfo = ffmpegOutput.match(/Stream #0:\d+.*?(?=Stream|$)/gs);
+                        if (streamInfo) {
+                          console.log('[ffmpeg] 当前视频包含的流:');
+                          streamInfo.forEach(info => {
+                            console.log('[ffmpeg] 流:', info.trim());
+                          });
+                        }
+                      }
+                    }
+                    resolve();
+                  });
+                } else {
+                  reject(new Error('字幕嵌入失败'));
+                }
+              });
+            });
+          } else {
+            console.log('[yt-dlp] 未找到可用的字幕文件');
+          }
+        } catch (error) {
+          console.error('Error embedding subtitles:', error);
+          downloadInfo.warning = '字幕嵌入失败';
+          mainWindow.webContents.send('download-progress', downloadInfo);
+        }
+      } else {
+        console.log('[yt-dlp] 字幕将保存为单独文件');
       }
     }
-  });
 
-  downloadProcess.stderr.on('data', (data) => {
-    console.error(`Error: ${data}`);
-  });
-
-  downloadProcess.on('close', (code) => {
-    downloadInfo.status = code === 0 ? 'completed' : 'error';
+    downloadInfo.status = 'completed';
+    if (downloadInfo.warning) {
+      downloadInfo.status = 'completed_with_warning';
+    }
     mainWindow.webContents.send('download-finished', downloadInfo);
-  });
 
-  // Return the download ID to the renderer
-  return downloadId;
+    return downloadId;
+  } catch (error) {
+    console.error('Download failed:', error);
+    downloadInfo.status = 'error';
+    downloadInfo.error = error.message;
+    mainWindow.webContents.send('download-finished', downloadInfo);
+    throw error;
+  }
 });
 
 // Open file location
@@ -425,7 +847,9 @@ ipcMain.handle('open-file-location', async (event, filePath) => {
 // Check for updates to yt-dlp
 ipcMain.handle('update-ytdlp', async () => {
   return new Promise((resolve) => {
-    const updateProcess = spawn('yt-dlp', ['-U']);
+    const args = ['-U'];
+    console.log('\n[yt-dlp] 执行命令:', 'yt-dlp', args.join(' '));
+    const updateProcess = spawn('yt-dlp', args);
     
     updateProcess.on('close', (code) => {
       resolve(code === 0);
