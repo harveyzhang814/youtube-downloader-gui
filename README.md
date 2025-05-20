@@ -1,98 +1,109 @@
-# YouTube Downloader GUI
+# YouTube Downloader GUI 🎬
 
-A macOS-styled desktop application that provides a user-friendly graphical interface for downloading YouTube videos using the yt-dlp command-line tool.
+A cross-platform, macOS-styled desktop application for downloading YouTube videos with a graphical interface, powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://ffmpeg.org/).
 
-![YouTube Downloader GUI](https://via.placeholder.com/800x500.png?text=YouTube+Downloader+GUI)
+## Features ✨
 
-## Quick Installation
-
-You can install the application directly from GitHub using the following command:
-
-```bash
-curl -o- https://raw.githubusercontent.com/harveyzhang814/youtube-downloader-gui/main/install.sh | bash
-```
-
-After installation, you can run the application from any terminal:
-
-```bash
-youtube-downloader-gui
-```
-
-## Features
-
-- **User-friendly Interface**: Clean, macOS-styled design across all platforms
-- **Video Preview**: Fetch video information before downloading
-- **Download Management**: Track download progress, speed, and file size
-- **Advanced Options**: Format selection and subtitle download options
+- **Modern UI**: Clean, macOS-inspired design using React and Tailwind CSS
+- **Video Info Preview**: Fetch and display video details before downloading
+- **Format Selection**: Choose video/audio formats and subtitles
+- **Subtitle Support**: Download and embed multi-language subtitles
+- **Download Management**:
+  - Real-time progress tracking
+  - Resume interrupted downloads
+  - Automatic merging of video/audio streams
 - **Cookie Integration**: Use browser cookies to bypass YouTube restrictions
-- **Cross-Platform**: Works on macOS, Windows, and Linux
+- **Cross-Platform**: Supports macOS, Windows, and Linux
 
-## Prerequisites
+## Architecture 🏗️
 
-This application requires the following dependencies to be installed on your system:
+- **Electron**: Desktop application framework
+- **React**: UI library for the renderer process
+- **Tailwind CSS**: Utility-first CSS framework
+- **Vite**: Fast build tool
+- **yt-dlp & ffmpeg**: Core download and media processing tools
 
-- **Python 3.x**: Required for yt-dlp
-- **yt-dlp**: The command-line YouTube downloader
-- **ffmpeg**: Required for media processing
+### Core Modules 🔧
 
-### Installing Dependencies
+- **TaskManager** (`src/main/task/TaskManager.js`):
+  - Handles creation, deletion, scanning, and persistence of download tasks
+  - Stores task state in `.ytd` files for resuming and management
+- **TaskRunner** (`src/main/task/TaskRunner.js`):
+  - Executes each download task step-by-step (info fetch, download, merge, etc.)
+  - Runs yt-dlp/ffmpeg as child processes and parses their output for progress
+  - Sends real-time progress updates to the renderer
+- **IPCHandler** (`src/main/ipc/IPCHandler.js`):
+  - Manages inter-process communication between Electron main and renderer processes
 
-#### Python 3.x
+## Directory Structure 📁
 
-- **macOS**: `brew install python3`
-- **Windows**: Download from [python.org](https://www.python.org/downloads/)
-- **Linux**: Usually pre-installed, or `sudo apt install python3`
+```
+youtube-downloader-gui/
+├── src/
+│   ├── main/                # Electron main process
+│   │   ├── ipc/             # IPC handlers
+│   │   ├── task/            # Task management and execution
+│   │   └── ...
+│   ├── renderer/            # React renderer process
+│   │   ├── components/      # UI components
+│   │   └── ...
+│   └── components/          # Shared components (if any)
+├── dist/                    # Production build output
+├── release/                 # Release assets
+├── package.json             # Project metadata and scripts
+└── ...
+```
 
-#### yt-dlp
+## Prerequisites 📋
 
-- **macOS (Homebrew)**: `brew install yt-dlp`
-- **Windows**: `pip3 install yt-dlp`
-- **Linux**: `pip3 install yt-dlp`
+- **yt-dlp**: YouTube video downloader
+- **ffmpeg**: Media processing and merging
 
-#### ffmpeg
+### Install yt-dlp
+- **macOS**: `brew install yt-dlp`
+- **Windows/Linux**: `pip3 install yt-dlp`
 
-- **macOS (Homebrew)**: `brew install ffmpeg`
+### Install ffmpeg
+- **macOS**: `brew install ffmpeg`
 - **Windows**: [Download from ffmpeg.org](https://ffmpeg.org/download.html)
 - **Linux**: `sudo apt install ffmpeg`
 
-## Development
+## Getting Started (Development) 🚀
 
-If you want to contribute to the development, you'll need:
-
-- Node.js 18.x or later
-- npm 8.x or later
-
-### Getting Started
-
-1. Clone the repository:
+1. **Clone the repository**
    ```bash
    git clone https://github.com/harveyzhang814/youtube-downloader-gui.git
    cd youtube-downloader-gui
    ```
-
-2. Install dependencies:
+2. **Install dependencies**
    ```bash
    npm install
    ```
-
-3. Start the development server:
+3. **Start development mode**
    ```bash
    npm run dev
    ```
-
-4. Build standalone executables:
+4. **Build for production**
    ```bash
    npm run build
    npm run build:bin
    ```
 
-## License
+## Usage 💻
+
+After building or installing, run the application from your terminal:
+```bash
+youtube-downloader-gui
+```
+
+## License 📄
 
 This project is licensed under the ISC License.
 
-## Acknowledgements
+## Acknowledgements 🙏
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - The command-line downloader that powers this application
-- [Electron](https://electronjs.org) - Cross-platform desktop application framework
-- [React](https://reactjs.org) - UI library
-- [Tailwind CSS](https://tailwindcss.com) - CSS framework
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [Electron](https://electronjs.org)
+- [React](https://reactjs.org)
+- [Tailwind CSS](https://tailwindcss.com)
+- [ffmpeg](https://ffmpeg.org)
