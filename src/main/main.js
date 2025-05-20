@@ -197,6 +197,17 @@ ipcMain.handle('get-available-formats', async (event, url) => {
                 // Determine if this is an audio-only format
                 const isAudioOnly = description.toLowerCase().includes('audio only') || resolution === 'audio';
 
+                // Extract audio language if present (only for audio)
+                let audioLang = '';
+                if (isAudioOnly) {
+                  // 匹配 [en-US] English (United States) original (default), ...
+                  // 提取第一个方括号后紧跟的第一个带括号的语言描述
+                  const langMatch = description.match(/\[[^\]]*\]\s*([^\(\[,]+(?:\([^\)]*\))?)/);
+                  if (langMatch) {
+                    audioLang = langMatch[1].trim();
+                  }
+                }
+
                 // Extract VBR (Video Bitrate) if available
                 let vbr = null;
                 const vbrMatch = description.match(/(\d+)k.*?fps/i);
@@ -228,7 +239,8 @@ ipcMain.handle('get-available-formats', async (event, url) => {
                   isAudioOnly,
                   vbr: vbr || '',
                   abr: abr || '',
-                  asr: asr || ''
+                  asr: asr || '',
+                  audioLang: audioLang || ''
                 };
               }
               return null;

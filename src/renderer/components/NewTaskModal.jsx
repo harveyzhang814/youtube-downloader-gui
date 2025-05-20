@@ -351,7 +351,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                     fontWeight: '500',
                     minWidth: '80px'
                   }}>
-                    {format.abr}
+                    {format.audioLang || 'Default'}
                   </span>
                   <span style={{ 
                     fontSize: '12px',
@@ -363,6 +363,16 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
                   }}>
                     {format.ext}
                   </span>
+                  {format.abr && (
+                    <span style={{
+                      fontSize: '12px',
+                      color: '#888',
+                      marginLeft: '8px',
+                      fontStyle: 'italic'
+                    }}>
+                      {format.abr}
+                    </span>
+                  )}
                   {format.asr && (
                     <span style={{ 
                       fontSize: '12px',
