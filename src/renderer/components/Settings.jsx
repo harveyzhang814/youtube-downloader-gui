@@ -16,11 +16,11 @@ const Settings = ({ onClose }) => {
     }
     
     // Load settings from main process
-    ipcRenderer.invoke('settings:getDownloadLocation').then(downloadLocation => {
-      setSettings(prev => ({ ...prev, downloadLocation }));
+    ipcRenderer.invoke('settings:getDownloadLocation').then(res => {
+      setSettings(prev => ({ ...prev, downloadLocation: res.data }));
     });
-    ipcRenderer.invoke('settings:getCookieSource').then(cookieSource => {
-      setSettings(prev => ({ ...prev, browserCookie: cookieSource }));
+    ipcRenderer.invoke('settings:getCookieSource').then(res => {
+      setSettings(prev => ({ ...prev, browserCookie: res.data }));
     });
   }, []);
 
@@ -29,10 +29,9 @@ const Settings = ({ onClose }) => {
       console.error('Electron IPC not available');
       return;
     }
-    
-    const path = await ipcRenderer.invoke('dialog:chooseDirectory');
-    if (path) {
-      setSettings(prev => ({ ...prev, downloadLocation: path }));
+    const res = await ipcRenderer.invoke('dialog:chooseDirectory');
+    if (res && res.data) {
+      setSettings(prev => ({ ...prev, downloadLocation: res.data }));
     }
   };
 

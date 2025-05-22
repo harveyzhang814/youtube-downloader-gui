@@ -45,6 +45,21 @@ const checkDependencies = () => {
   });
 };
 
+// Check if download folder exists and reset if not
+const checkDownloadFolder = () => {
+  const downloadPath = store.get('downloadPath');
+  if (!fs.existsSync(downloadPath)) {
+    // 新目标路径：用户Download目录/Youtube Downloader
+    const userDownload = app.getPath('downloads');
+    const newDownloadPath = path.join(userDownload, 'Youtube Downloader');
+    if (!fs.existsSync(newDownloadPath)) {
+      fs.mkdirSync(newDownloadPath, { recursive: true });
+    }
+    console.log(`Download folder ${downloadPath} does not exist, resetting to ${newDownloadPath}...`);
+    store.set('downloadPath', newDownloadPath);
+  }
+};
+
 const createWindow = async () => {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -84,7 +99,19 @@ const createWindow = async () => {
 };
 
 // Create the main application window when Electron is ready
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  try {
+    console.log('Application starting...');
+    checkDownloadFolder();
+    createWindow().catch(error => {
+      console.error('Failed to create window:', error);
+    });
+  } catch (error) {
+    console.error('Failed to start application:', error);
+  }
+}).catch(error => {
+  console.error('Failed to initialize application:', error);
+});
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
@@ -855,4 +882,14 @@ ipcMain.handle('update-ytdlp', async () => {
       resolve(code === 0);
     });
   });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 }); 

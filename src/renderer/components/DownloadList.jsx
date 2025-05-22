@@ -10,8 +10,9 @@ const DownloadList = (props) => {
   useEffect(() => {
     if (!ipcRenderer) return;
     const fetchTasks = async () => {
-      const list = await ipcRenderer.invoke('task:scan');
-      console.log('任务列表', list); // 调试用
+      const res = await ipcRenderer.invoke('task:scan');
+      // 兼容对象/数组返回，确保tasks为数组
+      const list = Array.isArray(res) ? res : (res.data || []);
       setTasks(list);
     };
     fetchTasks();
@@ -34,7 +35,8 @@ const DownloadList = (props) => {
     if (!ipcRenderer) return;
     await ipcRenderer.invoke('task:delete', taskId);
     // 删除后立即刷新
-    const list = await ipcRenderer.invoke('task:scan');
+    const res = await ipcRenderer.invoke('task:scan');
+    const list = Array.isArray(res) ? res : (res.data || []);
     setTasks(list);
   };
 
