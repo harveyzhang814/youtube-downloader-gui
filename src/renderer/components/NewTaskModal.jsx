@@ -87,7 +87,7 @@ const NewTaskModal = ({ onClose, onSubmit }) => {
         throw new Error('Please enter a valid YouTube URL');
       }
 
-      const { videoFormats, audioFormats } = await ipcRenderer.invoke('get-available-formats', url);
+      const { videoFormats, audioFormats } = await ipcRenderer.invoke('task:getAvailableFormats', url);
       setVideoFormats(videoFormats);
       setAudioFormats(audioFormats);
       

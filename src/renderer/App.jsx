@@ -7,23 +7,35 @@ import NewTaskModal from './components/NewTaskModal';
 import Settings from './components/Settings';
 import DependencyCheck from './components/DependencyCheck';
 
-// Fix the electron import
+// 修正 Electron 的 ipcRenderer 引用，确保在 Electron 环境下可用
 const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
 
+/**
+ * 应用主组件，负责页面结构、状态管理、与主进程通信。
+ */
 const App = () => {
+  // 下载任务列表
   const [downloads, setDownloads] = useState([]);
+  // 新建任务弹窗显示状态
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  // 设置面板显示状态
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // 依赖检测结果
   const [dependencies, setDependencies] = useState({ ytdlp: true, ffmpeg: true });
+  // 依赖检测弹窗显示状态
   const [dependencyCheckShown, setDependencyCheckShown] = useState(false);
 
+  /**
+   * 组件挂载时注册主进程事件监听，卸载时清理。
+   * 监听依赖检测、下载进度、下载完成等事件，更新前端状态。
+   */
   useEffect(() => {
     if (!ipcRenderer) {
       console.error('Electron IPC not available');
       return;
     }
 
-    // Listen for dependency check results
+    // 监听依赖检测结果
     ipcRenderer.on('dependencies-check', (_, deps) => {
       setDependencies(deps);
       if (!deps.ytdlp || !deps.ffmpeg) {
@@ -31,11 +43,12 @@ const App = () => {
       }
     });
 
-    // Listen for download updates
+    // 监听新下载任务开始
     ipcRenderer.on('download-started', (_, downloadInfo) => {
       setDownloads(prev => [...prev, downloadInfo]);
     });
 
+    // 监听下载进度更新
     ipcRenderer.on('download-progress', (_, downloadInfo) => {
       setDownloads(prev => 
         prev.map(download => 
@@ -44,6 +57,7 @@ const App = () => {
       );
     });
 
+    // 监听下载完成
     ipcRenderer.on('download-finished', (_, downloadInfo) => {
       setDownloads(prev => 
         prev.map(download => 
@@ -52,7 +66,7 @@ const App = () => {
       );
     });
 
-    // Cleanup listeners on unmount
+    // 卸载时清理所有监听器，防止内存泄漏
     return () => {
       if (ipcRenderer) {
         ipcRenderer.removeAllListeners('dependencies-check');
@@ -63,13 +77,17 @@ const App = () => {
     };
   }, []);
 
+  /**
+   * 启动新下载任务。
+   * @param {Object} settings - 新任务的设置参数
+   */
   const handleStartDownload = async (settings) => {
     if (!ipcRenderer) {
       console.error('Electron IPC not available');
       return;
     }
     try {
-      // 1. 创建任务
+      // 1. 创建任务（如有任务管理模块）
       const task = await ipcRenderer.invoke('task:create', settings);
       // 2. 启动任务
       await ipcRenderer.invoke('task:start', task.id);
@@ -80,23 +98,34 @@ const App = () => {
     }
   };
 
+  /**
+   * 删除下载任务（仅前端移除）。
+   * @param {string} downloadId - 任务ID
+   */
   const handleDeleteDownload = (downloadId) => {
     setDownloads(prev => prev.filter(download => download.id !== downloadId));
   };
 
+  /**
+   * 打开文件所在文件夹。
+   * @param {string} filePath - 文件路径
+   */
   const handleOpenFileLocation = async (filePath) => {
     if (!ipcRenderer) {
       console.error('Electron IPC not available');
       return;
     }
-    
     await ipcRenderer.invoke('open-file-location', filePath);
   };
 
+  /**
+   * 关闭依赖检测弹窗。
+   */
   const closeDependencyCheck = () => {
     setDependencyCheckShown(false);
   };
 
+  // 渲染主界面结构，包括标题栏、工具栏、下载列表、设置面板、弹窗等
   return (
     <div style={{ 
       display: 'flex', 
@@ -106,6 +135,7 @@ const App = () => {
       overflow: 'hidden',
       background: '#f5f5f7'
     }}>
+      {/* 顶部标题栏 */}
       <TitleBar />
       
       <div style={{ 
@@ -116,6 +146,7 @@ const App = () => {
         overflow: 'hidden',
         position: 'relative'
       }}>
+        {/* 工具栏，包含新建任务和设置按钮 */}
         <Toolbar 
           onNewTask={() => setIsNewTaskModalOpen(true)} 
           onOpenSettings={() => setIsSettingsOpen(true)} 
@@ -137,6 +168,7 @@ const App = () => {
             transition: 'margin-right 0.3s ease',
             marginRight: isSettingsOpen ? '300px' : '0'
           }}>
+            {/* 路由配置，主页面为下载列表 */}
             <Routes>
               <Route 
                 path="/" 
@@ -150,10 +182,11 @@ const App = () => {
             </Routes>
           </div>
           
+          {/* 右侧设置面板，固定宽度 */}
           {isSettingsOpen && (
             <div style={{
               position: 'fixed',
-              top: '38px', // Height of TitleBar
+              top: '38px', // TitleBar 高度
               right: 0,
               bottom: 0,
               width: '300px',
@@ -169,6 +202,7 @@ const App = () => {
         </div>
       </div>
 
+      {/* 新建任务弹窗 */}
       {isNewTaskModalOpen && (
         <NewTaskModal 
           onClose={() => setIsNewTaskModalOpen(false)}
@@ -176,6 +210,7 @@ const App = () => {
         />
       )}
 
+      {/* 依赖检测弹窗 */}
       {dependencyCheckShown && (
         <DependencyCheck 
           dependencies={dependencies} 
